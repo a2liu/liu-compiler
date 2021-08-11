@@ -1,13 +1,12 @@
 #import "Basic";
 #import "Bit_Array";
 
-view_set_bits :: (array: *Bit_Array, body: Code, flags: For_Flags, target_value: bool) #expand {
+view_set_bits :: (array: *Bit_Array, body: Code, flags: For_Flags) #expand {
     #assert(!flags);  // No options are supported.
 
     `it := true; // 'it' will just be true, or false, always.
 
     for slot, slot_index: array.slots {
-        #if !target_value slot = ~slot;   // Static 'if' ... no runtime cost if false.
         if !slot  continue;
 
         base_index := slot_index * 64;
@@ -55,6 +54,8 @@ mem_eq :: (a: *$T, b: *T) -> bool {
 
   return true;
 }
+
+#scope_file
 
 Custom :: struct {
   a := true;
