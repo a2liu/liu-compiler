@@ -1,6 +1,28 @@
 #import "Basic";
 #import "Bit_Array";
 
+view_set_bits :: (array: *Bit_Array, body: Code, flags: For_Flags, target_value: bool) #expand {
+    #assert(!flags);  // No options are supported.
+
+    `it := true; // 'it' will just be true, or false, always.
+
+    for slot, slot_index: array.slots {
+        #if !target_value slot = ~slot;   // Static 'if' ... no runtime cost if false.
+        if !slot  continue;
+
+        base_index := slot_index * 64;
+
+        bit := 1;
+        for i: 0..63 {
+            `it_index := base_index + i;
+            if it_index >= array.count break slot;
+
+            if slot & bit #insert (remove=#assert(false), break=break slot) body;
+            bit = bit << 1;
+        }
+    }
+}
+
 mem_eq :: (a: *$T, b: *T) -> bool {
   build_bitset :: (info: *$T) -> string {
     bit_array : Bit_Array;
@@ -27,7 +49,7 @@ mem_eq :: (a: *$T, b: *T) -> bool {
   bit_array :: #insert #run build_bitset(type_info(T));
 
   mem_a, mem_b := cast(*u8) a, cast(*u8) b;
-  for :only_set bit_array {
+  for :view_set_bits bit_array {
     if mem_a[it_index] != mem_b[it_index] return false;
   }
 
