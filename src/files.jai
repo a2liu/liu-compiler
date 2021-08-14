@@ -1,5 +1,4 @@
-#import "Basic";
-#import "File_Utilities";
+#import "String";
 #import "POSIX";
 #import "Time";
 
@@ -17,7 +16,7 @@ VisitFileIter :: struct {
   follow_symlinks : bool;
 }
 
-visit_files :: (dir_name: string, recursive: bool, visit_files := true,
+bfs_visit_files :: (dir_name: string, recursive: bool, visit_files := true,
 visit_directories := false, follow_symlinks := true) -> VisitFileIter {
   iter : VisitFileIter;
   iter.dir_name = dir_name;
@@ -122,11 +121,14 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
 #scope_file
 
 test :: () {
-  for visit_files(join(#filepath), true) {
-    print("it = %, it_index = %\n", it, it_index);
-  }
+    context.logger = albert_logger;
 
-  print("file tests passed\n");
+    for bfs_visit_files(join(#filepath), true) {
+        print("it = %, it_index = %\n", it, it_index);
+        log("Hello");
+    }
+
+    print("file tests passed\n");
 }
 
 #run test();
