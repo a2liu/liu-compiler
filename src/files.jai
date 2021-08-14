@@ -123,7 +123,6 @@ test :: () {
 
     for bfs_visit_files(join(#filepath), true) {
         print("it = %, it_index = %\n", it, it_index);
-        log("Hello");
     }
 
     print("file tests passed\n");

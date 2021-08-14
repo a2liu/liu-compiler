@@ -1,6 +1,5 @@
 #import "File_Utilities";
-#import "Basic"()(MEMORY_DEBUGGER=true);
-#import "File";
+#import "Basic";
 #import "String";
 
 #load "src/write.jai";
@@ -9,10 +8,12 @@
 #load "src/utils.jai";
 
 albert_logger :: (message: string, data: *void, info: Log_Info) {
-    print("%: %\n", info.location, message);
+    loc := info.location;
+    print("[%:%,%]: %\n", loc.fully_pathed_filename, loc.line_number, loc.character_number, message);
 }
 
-generate_runs :: () {
+#run main();
+main :: () {
     context.logger = albert_logger;
 
     builder : StringBuilder;
@@ -29,22 +30,9 @@ generate_runs :: () {
         write(*builder, "\";\n");
     }
 
-    // succeeded := visit_files(src_dir, recursive = true, user_data = *builder, proc = visitor);
-    // assert(succeeded);
-
-    // visitor :: (info: *File_Visit_Info, builder: *StringBuilder) {
-    //     write(builder, "#load \"");
-    //     write(builder, info.full_name);
-    //     write(builder, "\";\n");
-    // }
-
     free(src_dir);
     str := to_string(*builder);
-    print("%\n", str.data);
+    print("%", str);
     free_buffers(*builder);
     free(str);
 }
-
-#run generate_runs();
-
-main :: () {}
