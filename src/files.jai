@@ -39,7 +39,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
     };
 
     `it : File_Visit_Info = ---;
-    `it_index := 0;
+    `it_index : void;
 
     //            for 0..directories.count-1 {
     // dir_name := directories[it];
@@ -54,7 +54,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
 
             error := errno();
             log_error("Unable to open directory'%': %.\n", dir_name, error);
-            return; // FAILURE
+            break; // FAILURE
         }
         defer closedir(dirp);
 
@@ -80,7 +80,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                     // ELOOP happens if we try to follow a symlink loop for too long
                     if error != ENOENT && error != EACCES && error != ELOOP {
                         cursor = directories.count;
-                        break;
+                        break; // FAILURE
                     }
                     it.had_error = true;
                 }
@@ -97,7 +97,6 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                             it.is_directory = true;
                             it.filetime = timespec_to_filetime(stats.st_mtime);
                             #insert (break = { cursor = directories.count; break; }, continue = continue) body;
-                            `it_index += 1;
                         }
                     }
 
@@ -108,7 +107,6 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                         it.filetime = timespec_to_filetime(stats.st_mtime);
 
                         #insert (break = { cursor = directories.count; break; }, continue = continue) body;
-                        `it_index += 1;
                     }
                 }
             }

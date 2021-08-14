@@ -8,16 +8,8 @@
 #load "src/files.jai";
 #load "src/utils.jai";
 
-already_logging := false;
-
 albert_logger :: (message: string, data: *void, info: Log_Info) {
-    if already_logging {
-        << cast(*u8)null;
-    }
-
-    already_logging = true;
     print("%: %\n", info.location, message);
-    already_logging = false;
 }
 
 generate_runs :: () {
@@ -31,18 +23,24 @@ generate_runs :: () {
     src_dir := to_string(*builder);
     clear_contents(*builder);
 
-    succeeded := visit_files(src_dir, recursive = true, user_data = *builder, proc = visitor);
-    assert(succeeded);
-
-    visitor :: (info: *File_Visit_Info, builder: *StringBuilder) {
-      write(builder, "#load \"");
-      write(builder, info.full_name);
-      write(builder, "\";\n");
+    for info : bfs_visit_files(src_dir, recursive = true) {
+        write(*builder, "#load \"");
+        write(*builder, info.full_name);
+        write(*builder, "\";\n");
     }
+
+    // succeeded := visit_files(src_dir, recursive = true, user_data = *builder, proc = visitor);
+    // assert(succeeded);
+
+    // visitor :: (info: *File_Visit_Info, builder: *StringBuilder) {
+    //     write(builder, "#load \"");
+    //     write(builder, info.full_name);
+    //     write(builder, "\";\n");
+    // }
 
     free(src_dir);
     str := to_string(*builder);
-    print("%", str);
+    print("%\n", str.data);
     free_buffers(*builder);
     free(str);
 }
