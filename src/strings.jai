@@ -46,7 +46,14 @@ clear_contents :: (builder: *StringBuilder) {
     if builder.current_buffer   builder.current_buffer.occupied = 0;
 }
 
-try_write :: (builder: *StringBuilder, data: []u8) -> bool #must {
+try_write :: (builder: *StringBuilder, data: u8) -> bool {
+    data_array := u8.[0];
+    data_array[0] = data;
+
+    return try_write(builder, data_array);
+}
+
+try_write :: (builder: *StringBuilder, data: []u8) -> bool {
     if !builder.allocator init(builder);
 
     eat :: (data: [] u8, index: s64) -> [] u8, [] u8 {
