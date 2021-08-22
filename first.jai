@@ -25,7 +25,7 @@ main :: () -> string {
     for info : InFiles.bfs_visit_files(src_dir, recursive = true) {
         _path, basename, _ext, _name := path_decomp(info.full_name);
 
-        import_and_run_line := tprint("Src% :: #import \"%\";\n#run Src%+.test();\n", basename, basename, basename);
+        import_and_run_line := tprint("Src%1 :: #import \"%1\";\n#run Src%1.test();\n", basename);
         InWrite.write(*builder, import_and_run_line);
     }
 
