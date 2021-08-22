@@ -2,6 +2,7 @@
 #import "Basic";
 #import "String";
 
+#load "src/hashmap.jai";
 #load "src/hash.jai";
 #load "src/write.jai";
 #load "src/strings.jai";

@@ -2,11 +2,9 @@
 
 // @Api this should probably be split up into a set of keys and a set of round
 // configs, because round config is usually picked at compile time.
-SipHash :: struct {
+SipHash :: struct(rounds_per_block := 2, finalization_rounds := 4) {
   k0 : u64 = 0;
   k1 : u64 = 0;
-  rounds_per_block := 2;
-  finalization_rounds := 4;
 }
 
 hash :: (state: *SipHash, data: [] u8) -> u64, u64 {;
