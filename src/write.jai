@@ -58,7 +58,7 @@ atoi :: (s: string) -> bool, u64 {
         val = new_val;
     }
 
-    return val;
+    return true, val;
 }
 
 out_rev :: (thing: *$T, buffer: [] u8, width: u32, flags: PrintFlags) -> bool, s64 {
@@ -97,7 +97,9 @@ ntoa_format :: (thing: *$T, buffer: [] u8, negative: bool, base: u32, prec: u32,
         if width && (flags & .ZEROPAD) && has_preceeding {
             width -= 1;
         }
+
     }
+
     return false, 0;
 }
 
