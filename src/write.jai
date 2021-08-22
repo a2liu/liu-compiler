@@ -1,3 +1,5 @@
+#import "Basic";
+
 // based on https://github.com/mpaland/printf/blob/master/printf.c
 PRINTF_NTOA_BUFFER_SIZE :: 32;
 PRINTF_FTOA_BUFFER_SIZE :: 32;
@@ -14,17 +16,7 @@ write :: (thing: *$T, fmt: string, args: .. Any) {
     fmt_bytes : [] u8 = ---;
     fmt_bytes.data = fmt.data;
     fmt_bytes.count = fmt.count;
-    assert(try_write(thing, fmt_bytes));
-}
-
-try_write :: (thing: *$T, bytes: [] u8) -> bool {
-    for bytes {
-        if !try_write(thing, it) {
-            return false;
-        }
-    }
-
-    return true;
+    assert(T.try_write(thing, fmt_bytes));
 }
 
 PrintFlags :: enum_flags u32 {
@@ -795,3 +787,8 @@ int fctprintf(void (*out)(char character, void* arg), void* arg, const char* for
   return ret;
 }
 */
+
+#scope_export
+
+test :: () {}
+

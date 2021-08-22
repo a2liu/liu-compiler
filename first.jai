@@ -2,39 +2,38 @@
 #import "Basic";
 #import "String";
 
-#load "src/hashmap.jai";
-#load "src/hash.jai";
-#load "src/write.jai";
-#load "src/strings.jai";
-#load "src/files.jai";
-#load "src/utils.jai";
-
 albert_logger :: (message: string, data: *void, info: Log_Info) {
     loc := info.location;
     print("[%:%,%]: %\n", loc.fully_pathed_filename, loc.line_number, loc.character_number, message);
 }
 
-#run main();
-main :: () {
+main :: () -> string {
+    InStrings :: #import "strings";
+    InWrite :: #import "write";
+    InFiles :: #import "files";
+    for_expansion :: InFiles.for_expansion;
+
     context.logger = albert_logger;
 
-    builder : StringBuilder;
-    init(*builder);
+    builder := InStrings.StringBuilder.make();
 
-    write(*builder, path_strip_filename(#file));
-    write(*builder, "src");
-    src_dir := to_string(*builder);
-    clear_contents(*builder);
+    InWrite.write(*builder, path_strip_filename(#file));
+    InWrite.write(*builder, "src");
+    src_dir := InStrings.to_string(*builder);
+    InStrings.clear_contents(*builder);
 
-    for info : bfs_visit_files(src_dir, recursive = true) {
-        write(*builder, "#load \"");
-        write(*builder, info.full_name);
-        write(*builder, "\";\n");
+    for info : InFiles.bfs_visit_files(src_dir, recursive = true) {
+        _path, basename, _ext, _name := path_decomp(info.full_name);
+
+        import_and_run_line := tprint("Src% :: #import \"%\";\n#run Src%+.test();\n", basename, basename, basename);
+        InWrite.write(*builder, import_and_run_line);
     }
 
     free(src_dir);
-    str := to_string(*builder);
+    str := InStrings.to_string(*builder);
     print("%", str);
-    free_buffers(*builder);
-    free(str);
+    InStrings.free_buffers(*builder);
+    return str;
 }
+
+#insert #run main();

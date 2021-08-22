@@ -1,6 +1,7 @@
-// Based on Basic.String_Builder from Beta 76
 #import "Basic";
+#import "write";
 
+// Based on Basic.String_Builder from Beta 76
 StringBuilder :: struct {
     Buffer :: struct {
         occupied : s64 = 0;
@@ -15,11 +16,48 @@ StringBuilder :: struct {
     allocator : Allocator;
     allocator_data : *void;
 
-    new :: () -> StringBuilder {
+    try_write :: (builder: *StringBuilder, data: []u8) -> bool {
+        if !builder.allocator init(builder);
+
+        eat :: (data: [] u8, index: s64) -> [] u8, [] u8 {
+            assert(0 <= index);
+
+            idx := min(index, data.count);
+            begin, end : [] u8 = data, data;
+            begin.count = idx;
+            end.data += idx;
+            end.count -= idx;
+
+            return begin, end;
+        }
+
+        to_write := data;
+        current : [] u8 = ---;
+
+        if builder.inline_occupied < builder.inline_data.count {
+            current, to_write = eat(to_write, builder.inline_data.count - builder.inline_occupied);
+            memcpy(builder.inline_data.data + builder.inline_occupied, current.data, current.count);
+            builder.inline_occupied += current.count;
+        }
+
+        buffer := builder.current_buffer;
+        while to_write.count > 0 {
+            if !buffer || buffer.occupied >= buffer.data.count      buffer = expand(builder);
+
+            current, to_write = eat(to_write, buffer.data.count - buffer.occupied);
+            memcpy(buffer.data.data + buffer.occupied, current.data, current.count);
+            buffer.occupied += current.count;
+        }
+
+        return true;
+    }
+
+    make :: () -> StringBuilder {
         builder : StringBuilder;
         init(*builder);
         return builder;
     }
+
 }
 
 init :: (builder: *StringBuilder) {
@@ -44,49 +82,6 @@ clear_contents :: (builder: *StringBuilder) {
     builder.inline_occupied = 0;
     builder.current_buffer = builder.first_buffer;
     if builder.current_buffer   builder.current_buffer.occupied = 0;
-}
-
-try_write :: (builder: *StringBuilder, data: u8) -> bool {
-    data_array := u8.[0];
-    data_array[0] = data;
-
-    return try_write(builder, data_array);
-}
-
-try_write :: (builder: *StringBuilder, data: []u8) -> bool {
-    if !builder.allocator init(builder);
-
-    eat :: (data: [] u8, index: s64) -> [] u8, [] u8 {
-        assert(0 <= index);
-
-        idx := min(index, data.count);
-        begin, end : [] u8 = data, data;
-        begin.count = idx;
-        end.data += idx;
-        end.count -= idx;
-
-        return begin, end;
-    }
-
-    to_write := data;
-    current : [] u8 = ---;
-
-    if builder.inline_occupied < builder.inline_data.count {
-        current, to_write = eat(to_write, builder.inline_data.count - builder.inline_occupied);
-        memcpy(builder.inline_data.data + builder.inline_occupied, current.data, current.count);
-        builder.inline_occupied += current.count;
-    }
-
-    buffer := builder.current_buffer;
-    while to_write.count > 0 {
-        if !buffer || buffer.occupied >= buffer.data.count      buffer = expand(builder);
-
-        current, to_write = eat(to_write, buffer.data.count - buffer.occupied);
-        memcpy(buffer.data.data + buffer.occupied, current.data, current.count);
-        buffer.occupied += current.count;
-    }
-
-    return true;
 }
 
 to_string :: (builder: *StringBuilder, allocator := context.allocator,
@@ -180,8 +175,6 @@ cut_at :: (s: string, index: s64) -> string, string {
     return begin, end;
 }
 
-
-#scope_file
 test :: () {
     hello, world := cut_at("hello world!", 5);
     assert(hello == "hello");
@@ -199,6 +192,3 @@ test :: () {
 
     print("strings test passed\n");
 }
-
-
-#run test();

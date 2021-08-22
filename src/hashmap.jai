@@ -1,3 +1,9 @@
+#scope_file
+#import "hasher";
+Basic :: #import "Basic";
+
+#scope_export
+
 // Heavily based on Hash_HashMap implementation from beta 79
 
 HashMap :: struct(Key: Type, Value: Type, Hasher: Type = SipHash,
@@ -41,8 +47,6 @@ REMOVED_HASH        :: 1;
 FIRST_VALID_HASH    :: 2;
 
 // Initialize a `HashMap` and allocates the given number of slots.
-// You don't have to call init; if you don't, you'll get
-// an initial map of size `SIZE_MIN`.
 empty_map :: ($Key: Type, $Value: Type, capacity : s64 = 0, hasher: $Hasher = SipHash().{},
                 allocator : Allocator = null, allocator_data : *void = null,
                 $given_compare_function: (Key, Key) -> bool = null,
@@ -263,6 +267,8 @@ expand :: (map: *HashMap) {
     Basic.free(old_entries.data, map.allocator, map.allocator_data);
 }
 
+test :: () {}
+
 #scope_file
 
 next_power_of_two :: inline (x : int) -> int {
@@ -272,4 +278,4 @@ next_power_of_two :: inline (x : int) -> int {
     return p;
 }
 
-Basic :: #import "Basic";
+

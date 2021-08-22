@@ -1,6 +1,12 @@
-#import "String";
-#import "POSIX";
-#import "Time";
+#scope_file
+
+Basic :: #import "Basic";
+String :: #import "String";
+Posix :: #import "POSIX";
+Time :: #import "Time";
+Files :: #import "File_Utilities";
+
+#scope_export
 
 #if OS == .WINDOWS {
   PATH_SEP_STRING :: "\\";
@@ -31,14 +37,14 @@ visit_directories := false, follow_symlinks := true) -> VisitFileIter {
 for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #expand {
     #assert(!flags);
     directories: [..] string;
-    array_add(*directories, copy_string(dir_name));
+    Basic.array_add(*directories, Basic.copy_string(dir_name));
 
     defer {
-        for directories free(it);
-        array_reset(*directories);
+        for directories Basic.free(it);
+        Basic.array_reset(*directories);
     };
 
-    `it : File_Visit_Info = ---;
+    `it : Files.File_Visit_Info = ---;
     `it_index : void;
 
     //            for 0..directories.count-1 {
@@ -48,37 +54,37 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
         dir_name := directories[cursor];
         cursor += 1;
 
-        dirp := opendir(temp_c_string(dir_name));
+        dirp := Posix.opendir(Basic.temp_c_string(dir_name));
         if !dirp {
             if cursor != 1  continue;
 
-            error := errno();
-            log_error("Unable to open directory'%': %.\n", dir_name, error);
+            error := Posix.errno();
+            Basic.log_error("Unable to open directory'%': %.\n", dir_name, error);
             break; // FAILURE
         }
-        defer closedir(dirp);
+        defer Posix.closedir(dirp);
 
-        entry := readdir(dirp);
+        entry := Posix.readdir(dirp);
         while entry != null {
-            it.is_symlink = (entry.d_type == DT_LNK);
+            it.is_symlink = (entry.d_type == Posix.DT_LNK);
             if follow_symlinks || !it.is_symlink {
-                name := to_string(entry.d_name.data);
+                name := Basic.to_string(entry.d_name.data);
 
-                full_name := join(dir_name, "/", name);
-                defer free(full_name);
+                full_name := String.join(dir_name, "/", name);
+                defer Basic.free(full_name);
 
                 it.had_error = false;
-                stats: stat_t;
-                ret := stat(temp_c_string(full_name), *stats);
+                stats: Posix.stat_t;
+                ret := Posix.stat(Basic.temp_c_string(full_name), *stats);
                 if ret != 0 {
-                    error := errno();
-                    log_error("Unable to stat file '%': %.\n", full_name, error);
+                    error := Posix.errno();
+                    Basic.log_error("Unable to stat file '%': %.\n", full_name, error);
                     // ENOENT happens for symlinks that point to a missing file
                     // We still might want to visit those symlinks, so we report them
                     // It might also happen due to a race if the file is deleted between readdir and stat, but we let the user decide what to do with that information
                     // EACCES happens if we don’t have enought permissions for that file/dir. We still report it and let the user handle access errors
                     // ELOOP happens if we try to follow a symlink loop for too long
-                    if error != ENOENT && error != EACCES && error != ELOOP {
+                    if error != Posix.ENOENT && error != Posix.EACCES && error != Posix.ELOOP {
                         cursor = directories.count;
                         break; // FAILURE
                     }
@@ -89,43 +95,37 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                 it.full_name  = full_name;
                 it.descend_into_directory = false;
 
-                is_dir := S_ISDIR(stats.st_mode);
+                is_dir := Posix.S_ISDIR(stats.st_mode);
                 if is_dir {
                     if (name != ".") && (name != "..") {
                         it.descend_into_directory = recursive;
                         if visit_directories  {
                             it.is_directory = true;
-                            it.filetime = timespec_to_filetime(stats.st_mtime);
+                            it.filetime = Time.timespec_to_filetime(stats.st_mtime);
                             #insert (break = { cursor = directories.count; break; }, continue = continue) body;
                         }
                     }
 
-                    if it.descend_into_directory  array_add(*directories, copy_string(full_name));
+                    if it.descend_into_directory  Basic.array_add(*directories, Basic.copy_string(full_name));
                 } else {
                     if visit_files {
                         it.is_directory = false;
-                        it.filetime = timespec_to_filetime(stats.st_mtime);
+                        it.filetime = Time.timespec_to_filetime(stats.st_mtime);
 
                         #insert (break = { cursor = directories.count; break; }, continue = continue) body;
                     }
                 }
             }
 
-            entry = readdir(dirp);
+            entry = Posix.readdir(dirp);
         }
     }
 }
 
-#scope_file
-
 test :: () {
-    context.logger = albert_logger;
-
-    for bfs_visit_files(join(#filepath), true) {
-        print("it = %, it_index = %\n", it, it_index);
+    for bfs_visit_files(String.join(#filepath), true) {
+        Basic.print("it = %, it_index = %\n", it, it_index);
     }
 
-    print("file tests passed\n");
+    Basic.print("file tests passed\n");
 }
-
-#run test();

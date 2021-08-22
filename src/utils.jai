@@ -55,32 +55,28 @@ mem_eq :: (a: *$T, b: *T) -> bool {
   return true;
 }
 
-#scope_file
-
-Custom :: struct {
-  a := true;
-  b := 12;
-  c := true;
-  d := 12;
-}
-
 test :: () {
-  a_custom, b_custom : Custom;
+    Custom :: struct {
+        a := true;
+        b := 12;
+        c := true;
+        d := 12;
+    }
 
-  assert(mem_eq(*a_custom, *b_custom), "% and % should be equal", a_custom, b_custom);
-  a_custom.b += 1;
-  assert(!mem_eq(*a_custom, *b_custom), "% and % should not be equal", a_custom, b_custom);
-  a_custom.b -= 1;
+    a_custom, b_custom : Custom;
 
-  (cast(*u8) *a_custom.a)[1] = 1;
-  assert(mem_eq(*a_custom, *b_custom), "% and % should be equal", a_custom, b_custom);
+    assert(mem_eq(*a_custom, *b_custom), "% and % should be equal", a_custom, b_custom);
+    a_custom.b += 1;
+    assert(!mem_eq(*a_custom, *b_custom), "% and % should not be equal", a_custom, b_custom);
+    a_custom.b -= 1;
 
-  a_int, b_int : int = 12, 12;
-  assert(mem_eq(*a_int, *b_int), "% and % should be equal", a_int, b_int);
-  a_int += 1;
-  assert(!mem_eq(*a_int, *b_int), "% and % should not be equal", a_int, b_int);
+    (cast(*u8) *a_custom.a)[1] = 1;
+    assert(mem_eq(*a_custom, *b_custom), "% and % should be equal", a_custom, b_custom);
 
-  print("utils test passed\n");
+    a_int, b_int : int = 12, 12;
+    assert(mem_eq(*a_int, *b_int), "% and % should be equal", a_int, b_int);
+    a_int += 1;
+    assert(!mem_eq(*a_int, *b_int), "% and % should not be equal", a_int, b_int);
+
+    print("utils test passed\n");
 }
-
-#run test();
