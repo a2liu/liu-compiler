@@ -1,7 +1,3 @@
-#scope_file
-Posix :: #import "POSIX";
-#scope_export
-
 for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #expand {
     #assert(!flags);
 
@@ -21,19 +17,19 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
         dir_name := directories[cursor];
         cursor += 1;
 
-        dirp := Posix.opendir(temp_c_string(dir_name));
+        dirp := opendir(temp_c_string(dir_name));
         if !dirp {
             if cursor != 1  continue;
 
-            error := Posix.errno();
+            error := errno();
             log_error("Unable to open directory'%': %.\n", dir_name, error);
             break; // FAILURE
         }
-        defer Posix.closedir(dirp);
+        defer closedir(dirp);
 
-        entry := Posix.readdir(dirp);
+        entry := readdir(dirp);
         while entry != null {
-            it.is_symlink = (entry.d_type == Posix.DT_LNK);
+            it.is_symlink = (entry.d_type == DT_LNK);
             if follow_symlinks || !it.is_symlink {
                 name := to_string(entry.d_name.data);
 
@@ -41,10 +37,10 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                 defer free(full_name);
 
                 it.had_error = false;
-                stats: Posix.stat_t;
-                ret := Posix.stat(temp_c_string(full_name), *stats);
+                stats: stat_t;
+                ret := stat(temp_c_string(full_name), *stats);
                 if ret != 0 {
-                    error := Posix.errno();
+                    error := errno();
                     log_error("Unable to stat file '%': %.\n", full_name, error);
                     // ENOENT happens for symlinks that point to a missing file
                     //      We still might want to visit those symlinks, so we report them
@@ -53,7 +49,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                     // EACCES happens if we don’t have enought permissions for that file/dir. We still
                     //      report it and let the user handle access errors
                     // ELOOP happens if we try to follow a symlink loop for too long
-                    if error != Posix.ENOENT && error != Posix.EACCES && error != Posix.ELOOP {
+                    if error != ENOENT && error != EACCES && error != ELOOP {
                         cursor = directories.count;
                         break; // FAILURE
                     }
@@ -64,7 +60,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                 it.full_name  = full_name;
                 it.descend_into_directory = false;
 
-                is_dir := Posix.S_ISDIR(stats.st_mode);
+                is_dir := S_ISDIR(stats.st_mode);
                 if is_dir {
                     if (name != ".") && (name != "..") {
                         it.descend_into_directory = recursive;
@@ -86,7 +82,10 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                 }
             }
 
-            entry = Posix.readdir(dirp);
+            entry = readdir(dirp);
         }
     }
 }
+
+#scope_file
+#import "POSIX";

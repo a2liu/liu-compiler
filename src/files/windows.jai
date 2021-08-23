@@ -1,8 +1,3 @@
-#scope_file
-#import "Windows";
-#import "Windows_Utf8";
-#scope_export
-
 for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #expand {
     #assert(!flags);
 
@@ -41,7 +36,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
 
         while true {
             // Using temp storage here might break user code in surprising ways
-            // if they also try to use temp storage.
+            // if they also try to use temp storage in the procedure.
             name := wide_to_utf8(find_data.cFileName.data, allocator = null, null);
             full_name := join(dir_name, "/", name);
             defer { free(name); free(full_name); }
@@ -56,6 +51,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                     if visit_directories {
                         it.is_directory = true;
                         it.filetime = FILETIME_to_filetime(find_data.ftLastWriteTime);
+
                         #insert (break = { cursor = directories.count; break; }, continue = continue) body;
                     }
 
@@ -65,6 +61,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                 if visit_files {
                     it.is_directory = false;
                     it.filetime = FILETIME_to_filetime(find_data.ftLastWriteTime);
+
                     #insert (break = { cursor = directories.count; break; }, continue = continue) body;
                 }
             }
@@ -77,3 +74,6 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
     }
 }
 
+#scope_file
+#import "Windows";
+#import "Windows_Utf8";
