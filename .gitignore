@@ -1,6 +1,9 @@
-/*
+*
 
-!/src
-!*.jai
 !.gitignore
 !*.md
+
+!*.jai
+!/src
+
+!/repro
