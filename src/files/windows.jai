@@ -40,8 +40,10 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
         }
 
         while true {
-            name := wide_to_utf8(find_data.cFileName.data, allocator=null, null);
-            full_name := join(dir_name, "/", name);  // I guess we didn't want to use temporary storage here? Do we still care about that? If so we should document why.
+            // Using temp storage here might break user code in surprising ways
+            // if they also try to use temp storage.
+            name := wide_to_utf8(find_data.cFileName.data, allocator = null, null);
+            full_name := join(dir_name, "/", name);
             defer { free(name); free(full_name); }
 
             it.short_name             = name;

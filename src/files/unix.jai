@@ -47,9 +47,11 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                     error := Posix.errno();
                     log_error("Unable to stat file '%': %.\n", full_name, error);
                     // ENOENT happens for symlinks that point to a missing file
-                    // We still might want to visit those symlinks, so we report them
-                    // It might also happen due to a race if the file is deleted between readdir and stat, but we let the user decide what to do with that information
-                    // EACCES happens if we don’t have enought permissions for that file/dir. We still report it and let the user handle access errors
+                    //      We still might want to visit those symlinks, so we report them
+                    //      It might also happen due to a race if the file is deleted between readdir and stat,
+                    //      but we let the user decide what to do with that information
+                    // EACCES happens if we don’t have enought permissions for that file/dir. We still
+                    //      report it and let the user handle access errors
                     // ELOOP happens if we try to follow a symlink loop for too long
                     if error != Posix.ENOENT && error != Posix.EACCES && error != Posix.ELOOP {
                         cursor = directories.count;
