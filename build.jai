@@ -3,13 +3,8 @@
 
 #load "src/files/module.jai";
 
-// TODO do we need a real metaprogram?
 main :: () {
-    // Create a workspace to contain the program we want to compile.
-    // We can pass a name to compiler_create_workspace that gets reported
-    // back to us in error messages:
-    //
-    w := compiler_create_workspace("Silly Meta");
+    w := compiler_create_workspace("Output Executable");
     assert(w != 0, "Workspace creation failed.\n");
 
     out_options := get_build_options(w);
