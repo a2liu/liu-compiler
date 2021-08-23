@@ -22,7 +22,7 @@ main :: () -> string {
     src_dir := InStrings.to_string(*builder);
     InStrings.clear_contents(*builder);
 
-    for info : InFiles.bfs_visit_files(src_dir, recursive = true) {
+    for info : InFiles.bfs_visit_files(src_dir, recursive = false) {
         _path, basename, _ext, _name := path_decomp(info.full_name);
 
         import_and_run_line := tprint("Src%1 :: #import \"%1\";\n#run Src%1.test();\n", basename);

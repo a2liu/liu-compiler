@@ -1,7 +1,7 @@
 #import "Compiler";
 #import "Basic";
 
-#load "src/files.jai";
+#load "src/files/module.jai";
 
 // TODO do we need a real metaprogram?
 main :: () {
