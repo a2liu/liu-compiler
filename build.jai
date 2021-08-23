@@ -10,14 +10,12 @@ main :: () {
     // back to us in error messages:
     //
     w := compiler_create_workspace("Silly Meta");
-    if !w {
-        print("Workspace creation failed.\n");
-        return;
-    }
+    assert(w != 0, "Workspace creation failed.\n");
 
     out_options := get_build_options(w);
-    // out_options.output_executable_name = "silly";
-    out_options.output_type = .NO_OUTPUT;
+    out_options.output_path = join(#filepath, ".build/");
+    out_options.output_executable_name = "silly";
+    out_options.output_type = .EXECUTABLE;
     import_path : [..] string;
     for out_options.import_path array_add(*import_path, it);
     array_add(*import_path, "src");
