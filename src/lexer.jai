@@ -4,15 +4,16 @@
 Symbols :: struct {
     symbol_to_name : [..] string;
     name_to_symbol : Map(string, s64);
+
+    make :: () -> Symbols {
+        syms : Symbols;
+        syms.name_to_symbol = empty_map(string, s64, capacity = 64);
+        array_reserve(*syms.symbol_to_name, 64);
+
+        return syms;
+    }
 }
 
-symbol_table :: () -> Symbols {
-    syms : Symbols;
-    array_reserve(*syms.symbol_to_name, 64);
-    map_reserve(*syms.name_to_symbol, 64);
-
-    return syms;
-}
 
 Token :: struct {
     Kind :: enum {
@@ -109,8 +110,33 @@ Token :: struct {
     kind : Kind = .ERROR;
     data : Data;
     file: s64;
-    line: s32;
-    character: s32;
+    begin: s32;
+    end: s32;
+}
+
+has_members :: ($T: Type, members: .. string) -> bool {
+    info := type_info(T);
+    for member_name: members {
+        member := get_field(info, member_name);
+        if !member    return false;
+        if member.type != s32     return false;
+    }
+
+    return true;
+}
+
+ResultSpan :: struct(Inner: Type) {
+    #if #run type_info(Inner).type == .STRUCT {
+        using value: Inner;
+        #if !has_members(Inner, "begin", "end") {
+            begin: s32;
+            end: s32;
+        }
+    } else {
+        value: Inner;
+    }
+    did_succeed: bool = false;
+    was_final: bool = true; // unused by lexer
 }
 
 Lexer :: struct {
@@ -122,16 +148,16 @@ Lexer :: struct {
 
     make :: (text: string) -> Lexer {
         lexer : Lexer;
-        lexer.symbols = symbol_table();
+        lexer.symbols = Symbols.make();
         lexer.file_data = text;
 
         return lexer;
     }
 }
 
-parse_number :: (lexer: *Lexer) -> bool, u64 {
-    value : u64;
+parse_number :: (lexer: *Lexer) -> ResultSpan(u64) {
+    using result : ResultSpan(u64);
 
-    return true, value;
+    return result;
 }
 

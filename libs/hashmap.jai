@@ -56,17 +56,17 @@ empty_map :: ($Key: Type, $Value: Type, capacity : s64 = 0, hasher: $Hasher = Si
         map.allocator_data = context.allocator_data;
     }
 
-    if capacity     Map.reserve(*map, capacity);
+    if capacity     map_resize(*map, capacity);
     return map;
 }
 
-map_reserve :: (map: *$T/Map, additional: s64) {
-    if map.count + additional <= map.entries.count
-        return;
-
-    asked_for := map.count + additional;
-    new_capacity := max(asked_for, map.SIZE_MIN);
-}
+// map_reserve :: (map: *$T/Map, additional: s64) {
+//     if map.count + additional <= map.entries.count
+//         return;
+// 
+//     asked_for := map.count + additional;
+//     new_capacity := max(asked_for, map.SIZE_MIN);
+// }
 
 for_expansion :: (map: *$T/Map, body: Code, flags: For_Flags) #expand {
     #assert(!(flags & .REVERSE)); // We don't handle the reverse flag.
@@ -89,7 +89,6 @@ for_expansion :: (map: *$T/Map, body: Code, flags: For_Flags) #expand {
 map_resize :: (using map: *Map, slots_to_allocate: s64 = 0) {
     if slots_to_allocate == 0 slots_to_allocate = SIZE_MIN;
     n := next_power_of_two(slots_to_allocate);
-    map.allocated = n;
 
     // Right now we align to 8 bytes. Should we handle arbitrary alignment of both
     // keys and values? Maybe, but that will complicate the map,
@@ -120,26 +119,26 @@ map_reset :: (using map: *Map) {
 // be a compile-time parameter to the hash map?   -jblow, 8 September 2020
 map_add :: (map: *Map, key: map.Key_Type, value: map.Value_Type) -> *map.Value_Type {
     // The + 1 is here to handle the weird case when the map size is 1 and you add the first item...
-    // If we just do map_count * 2 >= map.allocated, we would fill the map, causing an infinite loop on find.
+    // If we just do map_count * 2 >= map.entries.count, we would fill the map, causing an infinite loop on find.
 
     #assert map.LOAD_FACTOR_PERCENT < 100;  // A 100% full map will infinite loop (and, you will want to be substantially smaller than this for reasonable performance).
 
     // filled / allocated >= 70/100 ... therefore
     // filled * 100 >= allocated * 70
-    if (map.slots_filled + 1)*100 >= map.allocated*map.LOAD_FACTOR_PERCENT  expand(map);
+    if (map.slots_filled + 1)*100 >= map.entries.count * map.LOAD_FACTOR_PERCENT  expand(map);
 
-    assert(map.slots_filled <= map.allocated);
+    assert(map.slots_filled <= map.entries.count);
 
     hash := map.hash_function(key);
     if hash < map.FIRST_VALID_HASH  hash += map.FIRST_VALID_HASH;
 
-    index := hash & (map.allocated - 1);
+    index := hash & (map.entries.count - 1);
     probe_increment: u32 = 1;
 
     while map.entries[index].hash {
         index += probe_increment;
         probe_increment += 1;
-        while index >= map.allocated  index -= map.allocated;
+        while index >= map.entries.count  index -= map.entries.count;
     }
 
     map.count        += 1;
@@ -166,12 +165,12 @@ map_set :: (map: *Map, key: map.Key_Type, value: map.Value_Type) -> *map.Value_T
 
 // Lookup the given key and return a pointer to the corresponding value.
 map_find_pointer :: (map: Map, key: map.Key_Type) -> *map.Value_Type {
-    if !map.allocated  return null;
+    if !map.entries.count  return null;
 
     hash := map.hash_function(key);
     if hash < map.FIRST_VALID_HASH  hash += map.FIRST_VALID_HASH;
 
-    index := hash & (map.allocated - 1);
+    index := hash & (map.entries.count - 1);
     probe_increment: u32 = 1;
 
     while map.entries[index].hash {
@@ -182,7 +181,7 @@ map_find_pointer :: (map: Map, key: map.Key_Type) -> *map.Value_Type {
 
         index += probe_increment;
         probe_increment += 1;
-        while index >= map.allocated  index -= map.allocated;
+        while index >= map.entries.count  index -= map.entries.count;
     }
 
     return null;
@@ -207,9 +206,9 @@ map_remove :: (map: *Map, key: map.Key_Type) -> (success: bool, value: map.Value
     if hash < map.FIRST_VALID_HASH  hash += map.FIRST_VALID_HASH;
 
     dummy: map.Value_Type = ---;
-    if !map.allocated  return false, dummy;  // Empty map, means not found!
+    if !map.entries.count  return false, dummy;  // Empty map, means not found!
 
-    index := hash & (map.allocated - 1);
+    index := hash & (map.entries.count - 1);
     probe_increment: u32 = 1;
 
     while map.entries[index].hash {
@@ -223,7 +222,7 @@ map_remove :: (map: *Map, key: map.Key_Type) -> (success: bool, value: map.Value
 
         index += probe_increment;
         probe_increment += 1;
-        while index >= map.allocated  index -= map.allocated;
+        while index >= map.entries.count  index -= map.entries.count;
     }
 
     return false, dummy;
@@ -237,12 +236,12 @@ expand :: (map: *Map) {
     // we might have lots of slots filled with REMOVED_HASH, so,
     // in that case, don't grow!
     new_allocated: s64 = ---;
-    if map.count * 2 < map.allocated {
+    if map.count * 2 < map.entries.count {
         // Just go with the current size, but clean out the removals.
-        new_allocated = map.allocated;
+        new_allocated = map.entries.count;
     } else {
         // We need to go deeper!
-        new_allocated = map.allocated * 2;
+        new_allocated = map.entries.count * 2;
     }
 
     if new_allocated < map.SIZE_MIN  new_allocated = map.SIZE_MIN;
