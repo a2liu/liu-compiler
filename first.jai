@@ -1,5 +1,6 @@
 #import "Basic";
 #import "parser";
+#import "utils";
 
 albert_logger :: (message: string, data: *void, info: Log_Info) {
     loc := info.location;
@@ -8,4 +9,10 @@ albert_logger :: (message: string, data: *void, info: Log_Info) {
 
 main :: () {
     sym := symbol_table();
+
+    i := 0;
+    for Cond(#code i < 10).{} {
+        print("%\n", i);
+        i += 1;
+    }
 }

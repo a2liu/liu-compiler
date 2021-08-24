@@ -35,7 +35,7 @@ main :: () {
     }
 
     out_options.output_path = join(#filepath, ".build/");
-    out_options.output_executable_name = "silly";
+    out_options.output_executable_name = "gone";
     out_options.output_type = .EXECUTABLE;
     out_options.import_path = import_path;
     set_build_options(out_options, w);

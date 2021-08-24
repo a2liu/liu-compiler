@@ -1,6 +1,5 @@
 #import "Basic";
 #import "hashmap";
-
 Symbols :: struct {
     symbol_to_name: [..] string;
     name_to_symbol: Map(string, s64);

@@ -1,26 +1,6 @@
 #import "Basic";
 #import "Bit_Array";
-
-view_set_bits :: (array: *Bit_Array, body: Code, flags: For_Flags) #expand {
-    #assert(!flags);  // No options are supported.
-
-    `it := true; // 'it' will just be true, or false, always.
-
-    for slot, slot_index: array.slots {
-        if !slot  continue;
-
-        base_index := slot_index * 64;
-
-        bit := 1;
-        for i: 0..63 {
-            `it_index := base_index + i;
-            if it_index >= array.count break slot;
-
-            if slot & bit #insert (remove=#assert(false), break=break slot) body;
-            bit = bit << 1;
-        }
-    }
-}
+Math :: #import "Math";
 
 mem_eq :: (a: *$T, b: *T) -> bool {
   build_bitset :: (info: *$T) -> string {
@@ -48,14 +28,46 @@ mem_eq :: (a: *$T, b: *T) -> bool {
   bit_array :: #insert #run build_bitset(type_info(T));
 
   mem_a, mem_b := cast(*u8) a, cast(*u8) b;
-  for :view_set_bits bit_array {
+  for :only_set bit_array {
     if mem_a[it_index] != mem_b[it_index] return false;
   }
 
   return true;
 }
 
+Cond :: struct (code: Code) {}
+for_expansion :: (cond: *Cond, body: Code, flags: For_Flags) #expand {
+    #assert(!flags);
+
+    for iterator : 0..Math.S64_MAX {
+        `it_index := iterator;
+        `it := #insert cond.code;
+
+        if it   #insert body;
+        else    break;
+    }
+}
+
 test :: () {
+    // i := 0;
+    // for_expansion(i < 12, #code { print("% ", it_index); i += 1; continue; }, 0);
+    // print("\n");
+
+    a := 0;
+    for Cond(#code a < 12).{} {
+        print("(% % % %) ", it_index, a, it, type_of(it));
+        a += 1;
+    }
+    print("\n");
+
+    array : Bit_Array;
+    init_bit_array(*array, 10);
+    set_all_bits(*array);
+    for array {
+        print("% ", it);
+    }
+    print("\n");
+
     Custom :: struct {
         a := true;
         b := 12;
