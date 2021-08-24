@@ -38,6 +38,7 @@ main :: () {
     out_options.output_executable_name = "gone";
     out_options.output_type = .EXECUTABLE;
     out_options.import_path = import_path;
+    // out_options.backend = .X64;
     set_build_options(out_options, w);
 
     compiler_begin_intercept(w);

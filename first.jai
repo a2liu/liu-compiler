@@ -1,5 +1,5 @@
 #import "Basic";
-#import "parser";
+#import "lexer";
 #import "utils";
 
 albert_logger :: (message: string, data: *void, info: Log_Info) {
