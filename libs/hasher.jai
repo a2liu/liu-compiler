@@ -1,6 +1,6 @@
 // @Api this should probably be split up into a set of keys and a set of round
 // configs, because round config is usually picked at compile time.
-SipHash :: struct(rounds_per_block := 2, finalization_rounds := 4) {
+SipHash :: struct(rounds_per_block : s64 = 2, finalization_rounds : s64 = 4) {
   k0 : u64 = 0;
   k1 : u64 = 0;
 }
