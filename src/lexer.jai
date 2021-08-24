@@ -110,8 +110,7 @@ Token :: struct {
     kind : Kind = .ERROR;
     data : Data;
     file: s64;
-    begin: s32;
-    end: s32;
+    begin: s32; end: s32;
 }
 
 has_members :: ($T: Type, members: .. string) -> bool {
@@ -134,17 +133,20 @@ ResultSpan :: struct(Inner: Type) {
         }
     } else {
         value: Inner;
+        begin: s32;
+        end: s32;
     }
-    did_succeed: bool = false;
-    was_final: bool = true; // unused by lexer
+    did_succeed: bool = true;
+    was_final: bool = false; // unused by lexer
+    fail_message: string;
 }
 
 Lexer :: struct {
     symbols : Symbols;
     file_data : string;
-    cursor : s64 = 0;
+    cursor : s32 = 0;
     line: s32 = 0;
-    character: s32 = 0;
+    line_offset: s32 = 0;
 
     make :: (text: string) -> Lexer {
         lexer : Lexer;
@@ -155,9 +157,156 @@ Lexer :: struct {
     }
 }
 
-parse_number :: (lexer: *Lexer) -> ResultSpan(u64) {
-    using result : ResultSpan(u64);
+start_result :: (lexer: *Lexer, $type: Type) -> ResultSpan(type) #expand {
+    result : ResultSpan(type);
+    result.was_final = true;
+    result.begin = lexer.cursor;
+    result.end = lexer.cursor;
 
     return result;
 }
 
+lex_number :: (lexer: *Lexer) -> ResultSpan(u64) {
+    result := start_result(lexer, u64);
+
+    char := expect(lexer);
+    assert(#char "0" <= char && char <= #char "9");
+    result.value = char - #char "0";
+
+    while true {
+        success, char := peek(lexer);
+        if char < #char "0" || #char "9" < char     break;
+
+        new_value := result.value * 10 + (char - #char "0");
+        if new_value < result.value {
+            result.did_succeed = false;
+            result.fail_message = "value was too big";
+            return result;
+        }
+
+        result.value = new_value;
+        expect(lexer);
+    }
+
+    return result;
+}
+
+
+#scope_file
+
+check :: (result: ResultSpan($T)) -> T #expand {
+    if result.did_succeed {
+        return result.value;
+    }
+
+    if result.was_final     `return result;
+}
+
+check :: (lexer: *Lexer, success : bool, message: string, was_final := false) #expand {
+    result := `result;
+
+    if !success {
+        result.did_succeed = false;
+        result.was_final = result.was_final || was_final;
+        result.end = lexer.cursor;
+        result.fail_message = message;
+
+        `return result;
+    }
+}
+
+pop :: (lexer: *Lexer) -> bool, u8 #expand {
+    result := `result;
+
+    if lexer.cursor >= lexer.file_data.count {
+        return false, 0;
+    }
+
+    value := lexer.file_data[lexer.cursor];
+    if value == {
+    case #char "\n";
+        lexer.line += 1;
+        lexer.line_offset = 0;
+    case #char "\r";
+        if lexer.cursor < lexer.file_data.count && lexer.file_data[lexer.cursor + 1] == #char "\n" {
+            lexer.cursor += 1;
+            value = #char "\n";
+        } else {
+            result.did_succeed = false;
+            result.was_final = true;
+            result.end = lexer.cursor;
+            result.fail_message = "got '\\r' character in place we weren't expecting";
+
+            `return result;
+        }
+    case;
+        lexer.line_offset += 1;
+    }
+
+    lexer.cursor += 1;
+    return true, value;
+}
+
+expect :: (lexer: *Lexer) -> u8 #expand {
+    result := `result;
+
+    if lexer.cursor >= lexer.file_data.count {
+        result.did_succeed = false;
+        result.was_final = true;
+        result.end = lexer.cursor;
+        result.fail_message = "reached end of file while still lexing something";
+
+        `return result;
+    }
+
+    value := lexer.file_data[lexer.cursor];
+    lexer.cursor += 1;
+
+    if value == {
+    case #char "\n";
+        lexer.line += 1;
+        lexer.line_offset = 0;
+    case #char "\r";
+        if lexer.cursor < lexer.file_data.count && lexer.file_data[lexer.cursor + 1] == #char "\n" {
+            value = #char "\n";
+            lexer.line += 1;
+            lexer.line_offset = 0;
+            lexer.cursor += 1;
+        } else {
+            result.did_succeed = false;
+            result.was_final = true;
+            result.end = lexer.cursor;
+            result.fail_message = "got '\\r' character in place we weren't expecting";
+
+            `return result;
+        }
+    case;
+        lexer.line_offset += 1;
+    }
+
+    return value;
+}
+
+peek :: (lexer: *Lexer) -> bool, u8 #expand {
+    result := `result;
+
+    if lexer.cursor >= lexer.file_data.count {
+        return false, 0;
+    }
+
+    value := lexer.file_data[lexer.cursor];
+    if value == #char "\r" {
+        if lexer.cursor < lexer.file_data.count && lexer.file_data[lexer.cursor + 1] == #char "\n" {
+            value = #char "\n";
+        } else {
+            result.did_succeed = false;
+            result.was_final = true;
+            result.end = lexer.cursor;
+            result.fail_message = "got '\\r' character in place we weren't expecting";
+
+            `return result;
+        }
+    }
+
+    return true, value;
+}
