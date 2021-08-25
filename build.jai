@@ -38,6 +38,9 @@ main :: () {
     out_options.output_executable_name = "gone";
     out_options.output_type = .EXECUTABLE;
     out_options.import_path = import_path;
+    out_options.array_bounds_check = .ALWAYS;
+    out_options.cast_bounds_check = .FATAL;
+    out_options.math_bounds_check = .NONFATAL;
     // out_options.backend = .X64;
     set_build_options(out_options, w);
 

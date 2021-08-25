@@ -3,18 +3,20 @@
 SipHash :: struct(rounds_per_block : s64 = 2, finalization_rounds : s64 = 4) {
   k0 : u64 = 0;
   k1 : u64 = 0;
+
+  hash_function :: hash;
 }
 
-hash :: (state: *SipHash, data: [] u8) -> u64, u64 {;
+hash :: (state: *SipHash, bytes: [] u8) -> u64, u64 {
     // Initialization
     v0 := state.k0 ^ 0x736f6d6570736575;
     v1 := state.k1 ^ 0x646f72616e646f6d;
     v2 := state.k0 ^ 0x6c7967656e657261;
     v3 := state.k1 ^ 0x7465646279746573;
 
-    blocks_count := data.count >> 3;
+    blocks_count := bytes.count >> 3;
     blocks : [] u64 = ---;
-    blocks.data = cast(*u64) data.data;
+    blocks.data = cast(*u64) bytes.data;
     blocks.count = blocks_count;
 
     v1 ^= 0xee;
@@ -27,10 +29,10 @@ hash :: (state: *SipHash, data: [] u8) -> u64, u64 {;
     // @Todo this also ignores whatever endianness garbage this hash did before.
     // Same as before, add a a call to `from_little_endian` to fix this.
     blocks_count_bytes := blocks_count << 3;
-    tail_count := data.count - blocks_count_bytes;
+    tail_count := bytes.count - blocks_count_bytes;
     tail_data : union { array: [8] u8; value: u64; };
-    memcpy(data.data + blocks_count_bytes, tail_data.array.data, tail_count);
-    t : u64 = (cast(u64) data.count) << 56;
+    memcpy(tail_data.array.data, bytes.data + blocks_count_bytes, tail_count);
+    t : u64 = (cast(u64) bytes.count) << 56;
     t |= tail_data.value;
 
     v0, v1, v2, v3 = block_rounds(v0, v1, v2, v3, num_rounds = state.rounds_per_block, data = t);

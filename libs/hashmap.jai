@@ -68,7 +68,7 @@ empty_map :: ($Key: Type, $Value: Type, capacity : s64 = 0, hasher: $Hasher = Si
 //     new_capacity := max(asked_for, map.SIZE_MIN);
 // }
 
-for_expansion :: (map: *$T/Map, body: Code, flags: For_Flags) #expand {
+for_expansion :: (map: *Map, body: Code, flags: For_Flags) #expand {
     #assert(!(flags & .REVERSE)); // We don't handle the reverse flag.
 
     for * entry, i: map.entries {
@@ -87,7 +87,7 @@ for_expansion :: (map: *$T/Map, body: Code, flags: For_Flags) #expand {
 }
 
 map_resize :: (using map: *Map, slots_to_allocate: s64 = 0) {
-    if slots_to_allocate == 0 slots_to_allocate = SIZE_MIN;
+    if slots_to_allocate == 0 slots_to_allocate = map.SIZE_MIN;
     n := next_power_of_two(slots_to_allocate);
 
     // Right now we align to 8 bytes. Should we handle arbitrary alignment of both
@@ -117,7 +117,7 @@ map_reset :: (using map: *Map) {
 // so you'll just get the first one. It's unclear whether we should assert on this;
 // it sort of depends on how slow you think key comparison might be. Maybe that should
 // be a compile-time parameter to the hash map?   -jblow, 8 September 2020
-map_add :: (map: *Map, key: map.Key_Type, value: map.Value_Type) -> *map.Value_Type {
+map_add :: (map: *Map, key: map.Key, value: map.Value) -> *map.Value {
     // The + 1 is here to handle the weird case when the map size is 1 and you add the first item...
     // If we just do map_count * 2 >= map.entries.count, we would fill the map, causing an infinite loop on find.
 
@@ -129,7 +129,7 @@ map_add :: (map: *Map, key: map.Key_Type, value: map.Value_Type) -> *map.Value_T
 
     assert(map.slots_filled <= map.entries.count);
 
-    hash := map.hash_function(key);
+    hash := hashmap_hash(*map.hasher, key);
     if hash < map.FIRST_VALID_HASH  hash += map.FIRST_VALID_HASH;
 
     index := hash & (map.entries.count - 1);
@@ -153,8 +153,8 @@ map_add :: (map: *Map, key: map.Key_Type, value: map.Value_Type) -> *map.Value_T
 }
 
 // Adds or replaces the given key value pair.
-map_set :: (map: *Map, key: map.Key_Type, value: map.Value_Type) -> *map.Value_Type {
-    value_ptr := map_find_pointer(<<map, key);
+map_set :: (map: *Map, key: map.Key, value: map.Value) -> *map.Value {
+    value_ptr := map_find_pointer(map, key);
     if value_ptr {
         <<value_ptr = value;
         return value_ptr;
@@ -164,10 +164,10 @@ map_set :: (map: *Map, key: map.Key_Type, value: map.Value_Type) -> *map.Value_T
 }
 
 // Lookup the given key and return a pointer to the corresponding value.
-map_find_pointer :: (map: Map, key: map.Key_Type) -> *map.Value_Type {
+map_find_pointer :: (map: *Map, key: map.Key) -> *map.Value {
     if !map.entries.count  return null;
 
-    hash := map.hash_function(key);
+    hash := hashmap_hash(*map.hasher, key);
     if hash < map.FIRST_VALID_HASH  hash += map.FIRST_VALID_HASH;
 
     index := hash & (map.entries.count - 1);
@@ -192,20 +192,20 @@ map_find_pointer :: (map: Map, key: map.Key_Type) -> *map.Value_Type {
 // You need to pay attention to 'success' because if it's false, 
 // the return value will be uninitialized. Thus the `#must`.
 //
-map_find :: (map: Map, key: map.Key_Type) -> (map.Value_Type, success: bool #must) {
+map_find :: (map: *Map, key: map.Key) -> (success: bool #must, map.Value) {
     pointer := inline map_find_pointer(map, key);
-    if pointer  return << pointer, true;
+    if pointer  return true, << pointer;
 
-    dummy: map.Value_Type = ---;
-    return dummy, false;
+    dummy: map.Value = ---;
+    return false, dummy;
 }
 
 // Remove the entry at the given key. Returns false if the key was not found.
-map_remove :: (map: *Map, key: map.Key_Type) -> (success: bool, value: map.Value_Type) {
-    hash := map.hash_function(key);
+map_remove :: (map: *Map, key: map.Key) -> (success: bool, value: map.Value) {
+    hash := hash(*map.hasher, key);
     if hash < map.FIRST_VALID_HASH  hash += map.FIRST_VALID_HASH;
 
-    dummy: map.Value_Type = ---;
+    dummy: map.Value = ---;
     if !map.entries.count  return false, dummy;  // Empty map, means not found!
 
     index := hash & (map.entries.count - 1);
@@ -246,7 +246,7 @@ expand :: (map: *Map) {
 
     if new_allocated < map.SIZE_MIN  new_allocated = map.SIZE_MIN;
 
-    resize(map, new_allocated);
+    map_resize(map, new_allocated);
 
     map.count        = 0;   // count and slots_filled will be incremented by map_add.
     map.slots_filled = 0;
@@ -263,6 +263,15 @@ expand :: (map: *Map) {
 test :: () {}
 
 #scope_file
+
+hashmap_hash :: (hasher: *$T, value: string) -> u32 {
+    data : [] u8 = ---;
+    data.data = value.data;
+    data.count = value.count;
+
+    first, second := T.hash_function(hasher, data);
+    return cast,trunc(u32) first;
+}
 
 next_power_of_two :: inline (x : int) -> int {
     p := 1;

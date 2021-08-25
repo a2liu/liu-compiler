@@ -8,12 +8,12 @@ albert_logger :: (message: string, data: *void, info: Log_Info) {
 }
 
 main :: () {
-    lexer := Lexer.make("Hello");
-    lex_number(*lexer);
+    lexer_init();
 
-    i := 0;
-    for Cond(#code i < 10).{} {
-        print("%\n", i);
-        i += 1;
+    lexer := Lexer.make("hello");
+    token := lex_token(*lexer);
+    print("%\n", token);
+    if token.kind == .IDENT {
+        print("ident_symbol: %\n", token.ident_symbol);
     }
 }
