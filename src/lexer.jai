@@ -54,7 +54,6 @@ Symbols :: struct {
 
 Token :: struct {
     Kind :: enum {
-        ERROR;
         EOF;
 
         FOR;
@@ -145,7 +144,7 @@ Token :: struct {
         ident_symbol : s64;
     }
 
-    kind : Kind = .ERROR;
+    kind : Kind = .EOF;
     using data : Data;
     file: s32;
     begin: s32;
@@ -206,8 +205,10 @@ Lexer :: struct {
 
 start_result :: (lexer: *Lexer, $type: Type) -> ResultSpan(type) {
     result : ResultSpan(type);
-    result.file = lexer.file;
+    result.fail_message = "internal error? result might not have been initialized";
+    result.did_succeed = true;
     result.was_final = true;
+    result.file = lexer.file;
     result.begin = lexer.cursor;
     result.end = lexer.cursor;
 
@@ -340,9 +341,9 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
         return result;
     }
 
-    result.kind = .ERROR;
     result.did_succeed = false;
     result.fail_message = "didn't recognize the character";
+
     return result;
 }
 
@@ -359,12 +360,11 @@ add_symbol :: (syms: *Symbols, ident: string) -> s32 {
     return sym;
 }
 
-check :: (lexer: *Lexer, success : bool, message: string, was_final := false) #expand {
+check :: (lexer: *Lexer, success : bool, message: string) #expand {
     result := `result;
 
     if !success {
         result.did_succeed = false;
-        result.was_final = result.was_final || was_final;
         result.end = lexer.cursor;
         result.fail_message = message;
 
@@ -391,9 +391,8 @@ match :: (lexer: *Lexer, to_match: u8) -> bool #expand {
             lexer.cursor += 1;
         } else {
             result := `result;
-            result.did_succeed = false;
-            result.was_final = true;
             result.end = lexer.cursor;
+            result.did_succeed = false;
             result.fail_message = "got '\\r' character in place we weren't expecting";
 
             `return result;
@@ -432,7 +431,6 @@ match :: (lexer: *Lexer, pattern: Code) -> bool #expand {
         } else {
             result := `result;
             result.did_succeed = false;
-            result.was_final = true;
             result.end = lexer.cursor;
             result.fail_message = "got '\\r' character in place we weren't expecting";
 
@@ -471,7 +469,6 @@ pop :: (lexer: *Lexer) -> bool, u8 #expand {
             value = #char "\n";
         } else {
             result.did_succeed = false;
-            result.was_final = true;
             result.fail_message = "got '\\r' character in place we weren't expecting";
             result.end = lexer.cursor;
 
@@ -490,7 +487,6 @@ expect :: (lexer: *Lexer) -> u8 #expand {
 
     if lexer.cursor >= lexer.file_data.count {
         result.did_succeed = false;
-        result.was_final = true;
         result.end = lexer.cursor;
         result.fail_message = "reached end of file while still lexing something";
 
@@ -512,7 +508,6 @@ expect :: (lexer: *Lexer) -> u8 #expand {
             lexer.line_offset = 0;
         } else {
             result.did_succeed = false;
-            result.was_final = true;
             result.end = lexer.cursor;
             result.fail_message = "got '\\r' character in place we weren't expecting";
 
@@ -536,7 +531,6 @@ peek :: (lexer: *Lexer) -> bool, u8 #expand {
             value = #char "\n";
         } else {
             result.did_succeed = false;
-            result.was_final = true;
             result.end = lexer.cursor;
             result.fail_message = "got '\\r' character in place we weren't expecting";
 
