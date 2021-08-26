@@ -2,20 +2,23 @@
 #import "Basic";
 #import "File_Utilities";
 #import "Hash_Table";
+#import "String";
 
 #load "libs/files/module.jai";
 
-init_build :: () -> Workspace, Build_Options, [..] string {
-    w := compiler_create_workspace("Output Executable");
+main :: () {
+    w := compiler_create_workspace("Testing");
     assert(w != 0, "Workspace creation failed.\n");
+
+    libs_folder := join(#filepath, "libs");
+    defer free(libs_folder);
 
     out_options := get_build_options(w);
 
     import_path : [..] string;
     array_reserve(*import_path, out_options.import_path.count + 2);
     for out_options.import_path array_add(*import_path, it);
-    array_add(*import_path, join(#filepath, "src"));
-    array_add(*import_path, join(#filepath, "libs"));
+    array_add(*import_path, libs_folder);
 
     modules : Table(string, string);
     init(*modules);
@@ -34,35 +37,29 @@ init_build :: () -> Workspace, Build_Options, [..] string {
         }
     }
 
-    uninit(*modules);
-
-    return w, out_options, import_path;
-}
-
-main :: () {
-    // @Todo make a function that figures out whether this file is listed in the
-    // command line arguments or not
-    // files, run_strings := compiler_get_source_files();
-    // for files {
-    //     if it == #file {
-    //         return;
-    //     }
-    // }
-
-    w, out_options, import_path := init_build();
-
-    out_options.output_path = join(#filepath, ".build/");
-    out_options.output_executable_name = "gone";
-    out_options.output_type = .EXECUTABLE;
+    out_options.output_type = .NO_OUTPUT;
     out_options.import_path = import_path;
-    out_options.array_bounds_check = .ALWAYS;
-    out_options.cast_bounds_check = .FATAL;
-    out_options.math_bounds_check = .NONFATAL;
-    // out_options.backend = .X64;
     set_build_options(out_options, w);
 
+    builder : String_Builder;
+    init_string_builder(*builder);
+    print_to_builder(*builder, "test :: () {\n");
+
+    for info : bfs_visit_files(libs_folder, recursive = false) {
+        _path, basename, _ext, _name := path_decomp(info.full_name);
+
+        import_line := tprint("    Mod%1 :: #import \"%1\";\n    Mod%1.test();\n", basename);
+        print_to_builder(*builder, import_line);
+    }
+    print_to_builder(*builder, "}\n#run test();\n");
+
+    str := builder_to_string(*builder);
+    print("%", str);
+    free_buffers(*builder);
+
     compiler_begin_intercept(w);
-    add_build_file("first.jai", w);
+
+    add_build_string(str, w);
 
     while true {
         message := compiler_wait_for_message();

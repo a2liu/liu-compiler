@@ -14,8 +14,8 @@ main :: () {
 
     lexer := Lexer.make("hello");
     token := lex_token(*lexer);
-    log("%", token);
-    if token.kind == .IDENT {
-        log("ident_symbol: %", token.ident_symbol);
+    while token.kind != .EOF {
+        log("%", token.kind);
+        token = lex_token(*lexer);
     }
 }

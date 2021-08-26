@@ -55,6 +55,9 @@ Symbols :: struct {
 Token :: struct {
     Kind :: enum {
         EOF;
+        LINE_COMMENT;
+        BLOCK_COMMENT;
+        WHITESPACE;
 
         FOR;
         IF;
@@ -80,7 +83,6 @@ Token :: struct {
         BOOL_TYPE;
         S64_TYPE;
 
-        SPACE_OR_TAB;
         NEWLINE;
         SEMICOLON;
 
@@ -93,11 +95,9 @@ Token :: struct {
         DOT;
         COMMA;
         COLON;
-        AMPERSAND;
-        DOUBLE_AMPERSAND;
-        VERTICAL;
-        DOUBLE_VERTICAL;
+        EXCLAMATION;
         STAR;
+        DOUBLE_STAR;
         PERCENT;
         MINUS;
         PLUS;
@@ -113,7 +113,6 @@ Token :: struct {
         GREATER_THAN;
         GEQ_THAN;
         LEFT_ARROW;
-        RIGHT_ARROW;
         RIGHT_DOUBLE_ARROW;
 
         LBRACE;
@@ -127,14 +126,16 @@ Token :: struct {
         DOT_DOT_EQUAL;
         TILDE;
         TICK;
-        EXCLAMATION;
         DOLLAR;
-        HASH;
         QUESTION;
+        RIGHT_ARROW;
         CARET;
         A_CIRCLE;
         BACKSLASH;
-        LEFT_DOUBLE_ARROW;
+        AMPERSAND;
+        DOUBLE_AMPERSAND;
+        VERTICAL;
+        DOUBLE_VERTICAL;
     }
 
     Data :: union {
@@ -163,27 +164,27 @@ has_members :: ($T: Type, members: .. string) -> bool {
     return true;
 }
 
-ResultSpan :: struct(Inner: Type) {
-    #if #run type_info(Inner).type == .STRUCT {
-        using value: Inner;
-        #if #run !has_members(Inner, "file") {
+ResultSpan :: struct(Value: Type, Error: Type = string) {
+    #if #run type_info(Value).type == .STRUCT {
+        using value: Value;
+        #if #run !has_members(Value, "file") {
             file: s32;
         }
-        #if #run !has_members(Inner, "begin") {
+        #if #run !has_members(Value, "begin") {
             begin: s32;
         }
-        #if #run !has_members(Inner, "end") {
+        #if #run !has_members(Value, "end") {
             end: s32;
         }
     } else {
-        value: Inner;
+        value: Value;
         begin: s32;
         end: s32;
     }
 
     did_succeed: bool = true;
     was_final: bool = false; // unused by lexer
-    fail_message: string = "";
+    error: Error;
 }
 
 Lexer :: struct {
@@ -205,7 +206,7 @@ Lexer :: struct {
 
 start_result :: (lexer: *Lexer, $type: Type) -> ResultSpan(type) {
     result : ResultSpan(type);
-    result.fail_message = "internal error? result might not have been initialized";
+    result.error = "internal error? result might not have been initialized";
     result.did_succeed = true;
     result.was_final = true;
     result.file = lexer.file;
@@ -215,13 +216,19 @@ start_result :: (lexer: *Lexer, $type: Type) -> ResultSpan(type) {
     return result;
 }
 
-lex_number :: (lexer: *Lexer) -> ResultSpan(u64) {
-    result := start_result(lexer, u64);
-
-}
-
 lex_token :: (lexer: *Lexer) -> ResultSpan(Token) {
-    return lex_raw_token(lexer);
+    while true {
+        result := lex_raw_token(lexer);
+        if !result.did_succeed      return result;
+
+        if result.kind == {
+            case .WHITESPACE;     continue;
+            case .LINE_COMMENT;     continue;
+            case .BLOCK_COMMENT;    continue;
+        }
+
+        return result;
+    }
 }
 
 lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
@@ -235,9 +242,40 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
     if char == {
     case #char " "; #through;
     case #char "\t";
-        result.kind = .SPACE_OR_TAB;
+        result.kind = .WHITESPACE;
         while match(lexer, char == #char " " || char == #char "\t") {}
 
+        return result;
+
+    case #char "/";
+        if match(lexer, #char "*") {
+            while true {
+                success, char = pop(lexer);
+                if !success {
+                    result.did_succeed = false;
+                    result.error = "block comments need to end with a '*/'";
+                    return result;
+                }
+
+                if char == #char "*" && match(lexer, #char "/") {
+                    result.kind = .BLOCK_COMMENT;
+                    return result;
+                }
+            }
+        }
+
+        if match(lexer, #char "/") {
+            while true {
+                success, char = pop(lexer);
+                if !success     break;
+                if char == #char "\n"   break;
+            }
+
+            result.kind = .LINE_COMMENT;
+            return result;
+        }
+
+        result.kind = .DIVIDE;
         return result;
 
     case #char "\n";
@@ -254,11 +292,20 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
 
     case #char ".";
         if match(lexer, #char ".") {
+            if match(lexer, #char "=") {
+                result.kind = .DOT_DOT_EQUAL;
+                return result;
+            }
+
             result.kind = .RANGE;
             return result;
         }
 
         result.kind = .DOT;
+        return result;
+
+    case #char ":";
+        result.kind = .COLON;
         return result;
 
     case #char "=";
@@ -267,7 +314,67 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
             return result;
         }
 
+        if match(lexer, #char ">") {
+            result.kind = .RIGHT_DOUBLE_ARROW;
+            return result;
+        }
+
         result.kind = .EQUALS;
+        return result;
+
+    case #char "<"; // @Todo should the lexer try to prevent you from doing stupid stuff
+        if match(lexer, #char "=") {
+            result.kind = .LEQ_THAN;
+            return result;
+        }
+
+        if match(lexer, #char "-") {
+            result.kind = .LEFT_ARROW;
+            return result;
+        }
+
+        if match(lexer, #char "<") {
+            result.kind = .LEFT_SHIFT;
+            return result;
+        }
+
+        result.kind = .LESS_THAN;
+        return result;
+
+    case #char "!";
+        if match(lexer, #char "=") {
+            result.kind = .NOT_EQUALS;
+            return result;
+        }
+
+        result.kind = .EXCLAMATION;
+        return result;
+
+    case #char "+";
+        result.kind = .PLUS;
+        return result;
+
+    case #char "-";
+        if match(lexer, #char ">") {
+            result.kind = .RIGHT_ARROW;
+            return result;
+        }
+
+        result.kind = .MINUS;
+        return result;
+
+    case #char "*";
+        if match(lexer, #char "*") {
+            result.kind = .DOUBLE_STAR;
+            return result;
+        }
+
+        result.kind = .STAR;
+        return result;
+
+    case #char "%";
+        result.kind = .PERCENT;
+        return result;
 
     case #char "{";
         result.kind = .LBRACE;
@@ -289,6 +396,28 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
     case #char ")";
         result.kind = .RPAREN;
         return result;
+
+    case #char "\"";
+        // @Todo generate strings or something
+        while true {
+            success, char = pop(lexer);
+            if !success {
+                result.did_succeed = false;
+                result.error = "strings need to end with a double quote -> \"";
+                return result;
+            }
+
+            // @Todo parse the whole escape sequences stuff
+            if char == #char "\\" {
+                if match(lexer, #char "\"") {
+                    result.kind = .STRING_LITERAL;
+                    return result;
+                }
+
+                if match(lexer, #char "\\") {
+                }
+            }
+        }
     }
 
     if #char "0" <= char && char <= #char "9" {
@@ -302,7 +431,7 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
             new_value := value * 10 + (char - #char "0");
             if new_value < value {
                 result.did_succeed = false;
-                result.fail_message = "value was too big";
+                result.error = "value was too big";
 
                 return result;
             }
@@ -342,7 +471,7 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
     }
 
     result.did_succeed = false;
-    result.fail_message = "didn't recognize the character";
+    result.error = "didn't recognize the character";
 
     return result;
 }
@@ -358,18 +487,6 @@ add_symbol :: (syms: *Symbols, ident: string) -> s32 {
     map_set(*syms.name_to_symbol, ident, sym);
 
     return sym;
-}
-
-check :: (lexer: *Lexer, success : bool, message: string) #expand {
-    result := `result;
-
-    if !success {
-        result.did_succeed = false;
-        result.end = lexer.cursor;
-        result.fail_message = message;
-
-        `return result;
-    }
 }
 
 match :: (lexer: *Lexer, to_match: u8) -> bool #expand {
@@ -393,7 +510,7 @@ match :: (lexer: *Lexer, to_match: u8) -> bool #expand {
             result := `result;
             result.end = lexer.cursor;
             result.did_succeed = false;
-            result.fail_message = "got '\\r' character in place we weren't expecting";
+            result.error = "got '\\r' character in place we weren't expecting";
 
             `return result;
         }
@@ -432,7 +549,7 @@ match :: (lexer: *Lexer, pattern: Code) -> bool #expand {
             result := `result;
             result.did_succeed = false;
             result.end = lexer.cursor;
-            result.fail_message = "got '\\r' character in place we weren't expecting";
+            result.error = "got '\\r' character in place we weren't expecting";
 
             `return result;
         }
@@ -469,7 +586,7 @@ pop :: (lexer: *Lexer) -> bool, u8 #expand {
             value = #char "\n";
         } else {
             result.did_succeed = false;
-            result.fail_message = "got '\\r' character in place we weren't expecting";
+            result.error = "got '\\r' character in place we weren't expecting";
             result.end = lexer.cursor;
 
             `return result;
@@ -488,7 +605,7 @@ expect :: (lexer: *Lexer) -> u8 #expand {
     if lexer.cursor >= lexer.file_data.count {
         result.did_succeed = false;
         result.end = lexer.cursor;
-        result.fail_message = "reached end of file while still lexing something";
+        result.error = "reached end of file while still lexing something";
 
         `return result;
     }
@@ -509,7 +626,7 @@ expect :: (lexer: *Lexer) -> u8 #expand {
         } else {
             result.did_succeed = false;
             result.end = lexer.cursor;
-            result.fail_message = "got '\\r' character in place we weren't expecting";
+            result.error = "got '\\r' character in place we weren't expecting";
 
             `return result;
         }
@@ -532,7 +649,7 @@ peek :: (lexer: *Lexer) -> bool, u8 #expand {
         } else {
             result.did_succeed = false;
             result.end = lexer.cursor;
-            result.fail_message = "got '\\r' character in place we weren't expecting";
+            result.error = "got '\\r' character in place we weren't expecting";
 
             `return result;
         }
