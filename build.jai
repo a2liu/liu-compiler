@@ -2,11 +2,12 @@
 #import "Basic";
 #import "File_Utilities";
 #import "Hash_Table";
+#import "String";
 
 #load "libs/files/module.jai";
 
-init_build :: () -> Workspace, Build_Options, [..] string {
-    w := compiler_create_workspace("Output Executable");
+init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string {
+    w := compiler_create_workspace(workspace_name);
     assert(w != 0, "Workspace creation failed.\n");
 
     out_options := get_build_options(w);
@@ -39,17 +40,64 @@ init_build :: () -> Workspace, Build_Options, [..] string {
     return w, out_options, import_path;
 }
 
-main :: () {
-    // @Todo make a function that figures out whether this file is listed in the
-    // command line arguments or not
-    // files, run_strings := compiler_get_source_files();
-    // for files {
-    //     if it == #file {
-    //         return;
-    //     }
-    // }
+is_initial_file :: (loc := #caller_location) -> bool {
+    files, run_strings := compiler_get_source_files();
+    max_len := 0;
+    for files   max_len = max(it.count, max_len);
 
-    w, out_options, import_path := init_build();
+    result, success := get_working_directory();
+    assert(success);
+
+    result_data : [] u8 = ---;
+    result_data.data = result.data;
+    result_data.count = result.count;
+
+    directory : [..] u8;
+    array_reserve(*directory, result.count + 1 + max_len);
+    add_final_slash := true;
+    for result_data {
+        if it == {
+        case #char "\\";    #through;
+        case #char "/";
+            array_add(*directory, #char "/");
+            add_final_slash = false;
+        case;
+            array_add(*directory, it);
+            add_final_slash = true;
+        }
+    }
+    if add_final_slash      array_add(*directory, #char "/");
+
+    parent_len := directory.count;
+    file := loc.fully_pathed_filename;
+    for files {
+        if is_absolute_path(it) && it == file   return true;
+
+        directory.count = parent_len;
+        path_data : [] u8 = ---;
+        path_data.data = it.data;
+        path_data.count = it.count;
+
+        for path_data   array_add(*directory, it);
+
+        abs_path : string = ---;
+        abs_path.data = directory.data;
+        abs_path.count = directory.count;
+
+        if abs_path == file     return true;
+    }
+
+    return false;
+}
+
+#run {
+    if !is_initial_file()       return;
+
+    options := get_build_options();
+    options.output_type = .NO_OUTPUT;  // No executable for the primary workspace.
+    set_build_options(options);
+
+    w, out_options, import_path := init_build("Output Executable");
 
     out_options.output_path = join(#filepath, ".build/");
     out_options.output_executable_name = "gone";
@@ -75,12 +123,4 @@ main :: () {
     }
 
     compiler_end_intercept(w);
-
-    // None of the code in this file is intended to end up in an executable
-    // of any kind. So, we tell the compiler not to make an executable for us:
-    options := get_build_options();
-    options.output_type = .NO_OUTPUT;  // No executable for the primary workspace.
-    set_build_options(options);
 }
-
-#run main();
