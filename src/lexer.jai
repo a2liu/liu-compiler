@@ -1,5 +1,7 @@
 #import "Basic";
 #import "hashmap";
+#import "strings";
+#import "write";
 
 keywords : Map(string, Token.Kind);
 
@@ -164,18 +166,13 @@ has_members :: ($T: Type, members: .. string) -> bool {
     return true;
 }
 
-ResultSpan :: struct(Value: Type, Error: Type = string) {
+Result :: struct(Value: Type, Error: Type = string) {
     #if #run type_info(Value).type == .STRUCT {
         using value: Value;
-        #if #run !has_members(Value, "file") {
-            file: s32;
-        }
-        #if #run !has_members(Value, "begin") {
-            begin: s32;
-        }
-        #if #run !has_members(Value, "end") {
-            end: s32;
-        }
+
+        #if #run !has_members(Value, "file")    file: s32;
+        #if #run !has_members(Value, "begin")   begin: s32;
+        #if #run !has_members(Value, "end")     end: s32;
     } else {
         value: Value;
         begin: s32;
@@ -204,8 +201,8 @@ Lexer :: struct {
     }
 }
 
-start_result :: (lexer: *Lexer, $type: Type) -> ResultSpan(type) {
-    result : ResultSpan(type);
+start_result :: (lexer: *Lexer, $type: Type) -> Result(type) {
+    result : Result(type);
     result.error = "internal error? result might not have been initialized";
     result.did_succeed = true;
     result.was_final = true;
@@ -216,7 +213,7 @@ start_result :: (lexer: *Lexer, $type: Type) -> ResultSpan(type) {
     return result;
 }
 
-lex_token :: (lexer: *Lexer) -> ResultSpan(Token) {
+lex_token :: (lexer: *Lexer) -> Result(Token) {
     while true {
         result := lex_raw_token(lexer);
         if !result.did_succeed      return result;
@@ -231,7 +228,7 @@ lex_token :: (lexer: *Lexer) -> ResultSpan(Token) {
     }
 }
 
-lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
+lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
     result := start_result(lexer, Token);
     success, char := pop(lexer);
     if !success {
@@ -412,26 +409,7 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
         return result;
 
     case #char "\"";
-        // @Todo generate strings or something
-        while true {
-            success, char = pop(lexer);
-            if !success {
-                result.did_succeed = false;
-                result.error = "strings need to end with a double quote -> \"";
-                return result;
-            }
-
-            // @Todo parse the whole escape sequences stuff
-            if char == #char "\\" {
-                if match(lexer, #char "\"") {
-                    result.kind = .STRING_LITERAL;
-                    return result;
-                }
-
-                if match(lexer, #char "\\") {
-                }
-            }
-        }
+        return lex_string_literal_after_quote(lexer, result);
     }
 
     if #char "0" <= char && char <= #char "9" {
@@ -440,7 +418,7 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
         while true {
             success, char := peek(lexer);
             if char < #char "0" || #char "9" < char     break;
-            expect(lexer);
+            expect(lexer, "what the heck this shouldn't ever error");
 
             new_value := value * 10 + (char - #char "0");
             if new_value < value {
@@ -490,7 +468,55 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
     return result;
 }
 
+lex_string_literal_after_quote :: inline (lexer: *Lexer, result: Result(Token)) -> Result(Token) {
+    return lex_string_literal_after_quote_(lexer, result);
+}
+
 #scope_file
+
+lex_string_literal_after_quote_ :: (lexer: *Lexer, _result: Result(Token)) -> Result(Token) {
+    result := _result;
+    builder := StringBuilder.make();
+
+    while true {
+        char := expect(lexer, "strings need to end with a double quote -> \"");
+        if char == #char "\"" {
+            result.kind = .STRING_LITERAL;
+            result.string_value = to_string(*builder, allocator = __temporary_allocator);
+            return result;
+        }
+
+        if char != #char "\\" {
+            write(*builder, char);
+            continue;
+        }
+
+        char = expect(lexer, "strings need to end with a double quote -> \"");
+        if char == {
+        case #char "'";
+            write(*builder, #char "'");
+            continue;
+        case #char "\"";
+            write(*builder, #char "\"");
+            continue;
+
+        case #char "r";
+            write(*builder, #char "\r");
+            continue;
+        case #char "n";
+            write(*builder, #char "\n");
+            continue;
+
+        case #char "\\";
+            write(*builder, #char "\\");
+            continue;
+        }
+
+        write(*builder, char);
+    }
+
+    return result;
+}
 
 add_symbol :: (syms: *Symbols, ident: string) -> s32 {
     found, sym := map_find(*syms.name_to_symbol, ident);
@@ -613,13 +639,13 @@ pop :: (lexer: *Lexer) -> bool, u8 #expand {
     return true, value;
 }
 
-expect :: (lexer: *Lexer) -> u8 #expand {
+expect :: (lexer: *Lexer, message: string) -> u8 #expand {
     result := `result;
 
     if lexer.cursor >= lexer.file_data.count {
         result.did_succeed = false;
         result.end = lexer.cursor;
-        result.error = "reached end of file while still lexing something";
+        result.error = message;
 
         `return result;
     }

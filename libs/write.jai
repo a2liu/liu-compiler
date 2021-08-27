@@ -19,6 +19,17 @@ write :: (thing: *$T, fmt: string, args: .. Any) {
     assert(T.try_write(thing, fmt_bytes));
 }
 
+write :: (thing: *$T, chars: [] u8) {
+    assert(T.try_write(thing, chars));
+}
+
+write :: (thing: *$T, char: u8) {
+    fmt_bytes : [1] u8 = ---;
+    fmt_bytes[0] = char;
+
+    assert(T.try_write(thing, fmt_bytes));
+}
+
 PrintFlags :: enum_flags u32 {
     ZEROPAD;
     LEFT;
