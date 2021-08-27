@@ -341,6 +341,20 @@ lex_raw_token :: (lexer: *Lexer) -> ResultSpan(Token) {
         result.kind = .LESS_THAN;
         return result;
 
+    case #char ">";
+        if match(lexer, #char "=") {
+            result.kind = .GEQ_THAN;
+            return result;
+        }
+
+        if match(lexer, #char ">") {
+            result.kind = .RIGHT_SHIFT;
+            return result;
+        }
+
+        result.kind = .GREATER_THAN;
+        return result;
+
     case #char "!";
         if match(lexer, #char "=") {
             result.kind = .NOT_EQUALS;

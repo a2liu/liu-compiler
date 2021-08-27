@@ -106,7 +106,7 @@ is_initial_file :: (loc := #caller_location) -> bool {
     out_options.array_bounds_check = .ALWAYS;
     out_options.cast_bounds_check = .FATAL;
     out_options.math_bounds_check = .NONFATAL;
-    // out_options.backend = .X64;
+
     set_build_options(out_options, w);
 
     compiler_begin_intercept(w);
