@@ -1,5 +1,3 @@
-#import "POSIX";
-
 for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #expand {
     #assert(!flags);
     directories: [..] string;
@@ -87,3 +85,6 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
         }
     }
 }
+
+#scope_file
+#import "POSIX";
