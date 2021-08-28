@@ -1,10 +1,8 @@
-*
+/*
 
-!.gitignore
-!*.md
+!/.gitignore
+!/*.md
 
-!*.jai
 !/src
 !/libs
-
 !/repro

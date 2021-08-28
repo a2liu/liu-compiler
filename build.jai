@@ -40,13 +40,23 @@ init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string 
     return w, out_options, import_path;
 }
 
+get_cwd :: () -> string {
+    #if OS == .WINDOWS {
+        result, success := get_working_directory();
+        assert(success);
+        return result;
+    } else {
+        result := get_working_directory();
+        return result;
+    }
+}
+
 is_initial_file :: (loc := #caller_location) -> bool {
     files, run_strings := compiler_get_source_files();
     max_len := 0;
     for files   max_len = max(it.count, max_len);
 
-    result, success := get_working_directory();
-    assert(success);
+    result := get_cwd();
 
     result_data : [] u8 = ---;
     result_data.data = result.data;
