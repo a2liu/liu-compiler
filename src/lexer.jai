@@ -1,9 +1,12 @@
+#scope_file
+
 #import "Basic";
 #import "hashmap";
 #import "strings";
 #import "write";
 
 keywords : Map(string, Token.Kind);
+#scope_export
 
 UNDERSCORE_SYMBOL : s32 : 0;
 IT_SYMBOL : s32 : 1;

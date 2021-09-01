@@ -4,42 +4,20 @@
 #import "Hash_Table";
 #import "String";
 
-#load "libs/files/module.jai";
+#load "build.jai";
 
-main :: () {
-    w := compiler_create_workspace("Testing");
-    assert(w != 0, "Workspace creation failed.\n");
+#run {
+    options := get_build_options();
+    options.output_type = .NO_OUTPUT;  // No executable for the primary workspace.
+    set_build_options(options);
 
-    libs_folder := join(#filepath, "libs");
-    defer free(libs_folder);
-
-    out_options := get_build_options(w);
-
-    import_path : [..] string;
-    array_reserve(*import_path, out_options.import_path.count + 2);
-    for out_options.import_path array_add(*import_path, it);
-    array_add(*import_path, libs_folder);
-
-    modules : Table(string, string);
-    init(*modules);
-
-    for path: import_path {
-        for f_info: bfs_visit_files(path, recursive = false) {
-            _path, basename, _ext, _name := path_decomp(f_info.full_name);
-            previous := table_find_pointer(modules, basename);
-            if previous {
-                message := sprint("module defined at `%` conflicts with module with same import name at `%`",
-                                    << previous, f_info.full_name);
-                compiler_report(message);
-            }
-
-            table_set(*modules, basename, f_info.full_name);
-        }
-    }
-
+    w, out_options, import_path := init_build("Library Tests");
     out_options.output_type = .NO_OUTPUT;
     out_options.import_path = import_path;
     set_build_options(out_options, w);
+
+    libs_folder := join(#filepath, "libs");
+    defer free(libs_folder);
 
     builder : String_Builder;
     init_string_builder(*builder);
@@ -72,12 +50,4 @@ main :: () {
     }
 
     compiler_end_intercept(w);
-
-    // None of the code in this file is intended to end up in an executable
-    // of any kind. So, we tell the compiler not to make an executable for us:
-    options := get_build_options();
-    options.output_type = .NO_OUTPUT;  // No executable for the primary workspace.
-    set_build_options(options);
 }
-
-#run main();
