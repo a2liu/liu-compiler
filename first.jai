@@ -4,11 +4,25 @@
 #import "utils";
 #import "parser";
 #import "buckets";
+#import "dynamic_dispatch";
 
 albert_logger :: (message: string, data: *void, info: Log_Info) {
     loc := info.location;
     print("[%:%,%] %\n", loc.fully_pathed_filename, loc.line_number, loc.character_number, message);
 }
+
+Hello1 :: struct {
+    internal :: () {}
+}
+
+Hello2 :: struct {
+    internal :: () {}
+}
+
+Hello :: struct @dd_interface {
+    internal :: () {}
+}
+
 
 main :: () {
     context.logger = albert_logger;
@@ -28,6 +42,7 @@ main :: () {
 
     a : Hello1;
     b : Hello2;
+    try := Dynamic(Hello).make(*a);
 }
 
 // #run main();

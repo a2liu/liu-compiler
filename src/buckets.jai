@@ -1,13 +1,5 @@
 #import "Basic";
 
-Hello1 :: struct {
-    internal :: () {}
-}
-
-Hello2 :: struct {
-    internal :: () {}
-}
-
 BucketList :: struct {
     len : s64;
     idx : s64;

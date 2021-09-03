@@ -2,19 +2,37 @@
 #import "Basic";
 #import "Hash_Table";
 
+Dynamic :: struct(interface_name: Type) {
+    Self :: Dynamic(interface_name);
+    value: *void;
+    // @Optimization use an enum instead of a Type object so case matching can
+    // be optimized better during codegen
+    type: Type;
+
+    make :: (value: *$T) -> Self {
+        out : Self;
+        out.value = value;
+        out.type = T;
+
+        return out;
+    }
+}
+
 Dispatch :: struct {
     is_init: bool = false;
+    workspace: Workspace;
     table: Table([] u64, [..] Code_Struct, hash_sorted_hashes); // sorted name hashes -> list of interfaces
 
-    make :: (allocator: Allocator = null, allocator_data: *void = null) -> Dispatch {
+    make :: (workspace: Workspace, allocator: Allocator = null, allocator_data: *void = null) -> Dispatch {
         data : Dispatch;
-        init(*data);
+        init(*data, workspace, allocator, allocator_data);
         return data;
     }
 
-    init :: (data: *Dispatch, allocator: Allocator = null, allocator_data: *void = null) {
+    init :: (data: *Dispatch, workspace: Workspace, allocator: Allocator = null, allocator_data: *void = null) {
         assert(!data.is_init);
         data.is_init = true;
+        data.workspace = workspace;
         alloc := ifx allocator == null then context.allocator else allocator;
         alloc_data := ifx allocator_data == null then context.allocator_data else allocator_data;
         push_allocator(alloc, alloc_data);
@@ -23,6 +41,7 @@ Dispatch :: struct {
     }
 
     message_handler :: (data: *Dispatch, msg: *Message) {
+        assert(msg.workspace == data.workspace, "can only get information from the current workspace");
         w := msg.workspace;
         if msg.kind == {
         case .PHASE;
@@ -106,6 +125,7 @@ start_partial :: (initial: SipHash($per_block, $final)) -> SipHashState(per_bloc
     state.v1 = initial.k1 ^ 0x646f72616e646f6d;
     state.v2 = initial.k0 ^ 0x6c7967656e657261;
     state.v3 = initial.k1 ^ 0x7465646279746573;
+    state.v1 ^= 0xee;
 
     return state;
 }
@@ -115,8 +135,6 @@ hash_partial :: (state: *SipHashState, bytes: [] u8) {
     blocks : [] u64 = ---;
     blocks.data = cast(*u64) bytes.data;
     blocks.count = blocks_count;
-
-    state.v1 ^= 0xee;
 
     // @Todo lmao im ignoring endianness for now, but whatevs tbh, just insert a
     // call to `from_little_endian` or something

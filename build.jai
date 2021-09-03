@@ -125,7 +125,7 @@ is_initial_file :: (loc := #caller_location) -> bool {
     set_build_options(out_options, w);
 
     compiler_begin_intercept(w);
-    dispatch := Dispatch.make();
+    dispatch := Dispatch.make(w);
     add_build_file("first.jai", w);
 
     while true {
