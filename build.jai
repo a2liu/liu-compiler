@@ -5,6 +5,7 @@
 #import "String";
 
 #load "libs/files/module.jai";
+#load "libs/dynamic_dispatch.jai";
 
 init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string {
     w := compiler_create_workspace(workspace_name);
@@ -124,11 +125,14 @@ is_initial_file :: (loc := #caller_location) -> bool {
     set_build_options(out_options, w);
 
     compiler_begin_intercept(w);
+    dispatch := Dispatch.make();
     add_build_file("first.jai", w);
 
     while true {
         message := compiler_wait_for_message();
         if !message break;
+
+        Dispatch.message_handler(*dispatch, message);
 
         if message.kind == {
         case .COMPLETE;

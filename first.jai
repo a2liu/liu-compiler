@@ -25,6 +25,9 @@ main :: () {
     }
 
     parse_complete_expr();
+
+    a : Hello1;
+    b : Hello2;
 }
 
-#run main();
+// #run main();
