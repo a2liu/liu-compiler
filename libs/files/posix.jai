@@ -16,7 +16,6 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
     cursor := 0;
     while cursor < directories.count {
         dir_name := directories[cursor];
-        print("dir_name=%\n",dir_name);
         cursor += 1;
 
         dirp := opendir(temp_c_string(dir_name));

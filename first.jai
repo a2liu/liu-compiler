@@ -1,7 +1,9 @@
+#import "Basic";
 #import "lexer";
 #import "parser";
 #import "utils";
-#import "hello";
+#import "parser";
+#import "buckets";
 
 albert_logger :: (message: string, data: *void, info: Log_Info) {
     loc := info.location;
@@ -9,9 +11,11 @@ albert_logger :: (message: string, data: *void, info: Log_Info) {
 }
 
 main :: () {
-    lexer_init();
-
     context.logger = albert_logger;
+    context.allocator = bucket_allocator;
+    context.allocator_data = BucketList.make();
+
+    lexer_init();
 
     lexer := Lexer.make("hello");
     token := lex_token(*lexer);
@@ -19,4 +23,8 @@ main :: () {
         log("%", token.kind);
         token = lex_token(*lexer);
     }
+
+    parse_complete_expr();
 }
+
+#run main();

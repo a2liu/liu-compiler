@@ -30,3 +30,8 @@ ExprNode :: struct {
     kind: Kind;
     using data: Data;
 }
+
+parse_complete_expr :: () {
+    expr := New(ExprNode);
+
+}

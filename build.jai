@@ -39,10 +39,6 @@ init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string 
         }
     }
 
-    for modules {
-        print("%\n", it);
-    }
-
     uninit(*modules);
 
     return w, out_options, import_path;
