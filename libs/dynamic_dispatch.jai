@@ -2,6 +2,9 @@
 #import "Basic";
 #import "Hash_Table";
 
+// track all interfaces and their implementors
+// generate giant switch statements after typechecking finishes
+
 Dyn :: struct(interface_name: Type) {
     Self :: Dyn(interface_name);
     value: *void;
@@ -26,7 +29,7 @@ Dispatch :: struct {
 
     Interface :: struct {
         interface_code: *Code_Struct;
-        members: Table(string, InterfaceMember);
+        members: Table(string, InterfaceMember, hash_string);
         implementors: [..] *Code_Struct;
     }
 
@@ -48,7 +51,7 @@ Dispatch :: struct {
         data.workspace = workspace;
     }
 
-    message_handler :: (data: *Dispatch, msg: *Message) {
+    message_handler :: (data: *Dispatch, msg: *Message, delay_generation: bool = false) {
         assert(msg.workspace == data.workspace, "can only get information from the current workspace");
         w := msg.workspace;
         if msg.kind == {
@@ -105,7 +108,7 @@ SipHash :: struct(rounds_per_block : s64 = 2, finalization_rounds : s64 = 4) {
   k1 : u64 = 0;
 }
 
-hash_name :: (key: string) -> u64 {
+hash_string :: (key: string) -> u32 {
     initial : SipHash();
     hasher := start_partial(initial);
 
@@ -115,7 +118,7 @@ hash_name :: (key: string) -> u64 {
     hash_partial(*hasher, bytes);
 
     upper, lower := hash_partial_read(*hasher);
-    return lower;
+    return cast,trunc(u32) lower;
 }
 
 hash_sorted_hashes :: (key: [] u64) -> u32 {
