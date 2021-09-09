@@ -1,13 +1,9 @@
-#scope_file
-
 #import "Basic";
 #import "hashmap";
 #import "strings";
 #import "write";
 
-
 keywords : Map(string, Token.Kind);
-#scope_export
 
 UNDERSCORE_SYMBOL : s32 : 0;
 IT_SYMBOL : s32 : 1;
@@ -153,7 +149,6 @@ Token :: struct {
 
     kind : Kind = .EOF;
     using data : Data;
-    file: s32;
     begin: s32;
     end: s32;
 }
@@ -174,7 +169,6 @@ Result :: struct(Value: Type, Error: Type = string) {
     #if #run type_info(Value).type == .STRUCT {
         using value: Value;
 
-        #if #run !has_members(Value, "file")    file: s32;
         #if #run !has_members(Value, "begin")   begin: s32;
         #if #run !has_members(Value, "end")     end: s32;
     } else {
@@ -192,7 +186,6 @@ Lexer :: struct {
     symbols : Symbols;
     file_data : string;
     cursor : s32 = 0;
-    file: s32;
     line: s32 = 0;
     line_offset: s32 = 0;
 
@@ -203,18 +196,6 @@ Lexer :: struct {
 
         return lexer;
     }
-}
-
-start_result :: (lexer: *Lexer, $type: Type) -> Result(type) {
-    result : Result(type);
-    result.error = "internal error? result might not have been initialized";
-    result.did_succeed = true;
-    result.was_final = true;
-    result.file = lexer.file;
-    result.begin = lexer.cursor;
-    result.end = lexer.cursor;
-
-    return result;
 }
 
 lex_token :: (lexer: *Lexer) -> Result(Token) {
@@ -477,6 +458,18 @@ lex_string_literal_after_quote :: inline (lexer: *Lexer, result: Result(Token)) 
 }
 
 #scope_file
+
+start_result :: (lexer: *Lexer, $type: Type) -> Result(type) {
+    result : Result(type);
+    result.error = "internal error? result might not have been initialized";
+    result.did_succeed = true;
+    result.was_final = true;
+    result.begin = lexer.cursor;
+    result.end = lexer.cursor;
+
+    return result;
+}
+
 
 lex_string_literal_after_quote_ :: (lexer: *Lexer, _result: Result(Token)) -> Result(Token) {
     result := _result;
