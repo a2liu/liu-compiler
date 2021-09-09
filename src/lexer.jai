@@ -8,6 +8,7 @@ keywords : Map(string, Token.Kind);
 UNDERSCORE_SYMBOL : s32 : 0;
 IT_SYMBOL : s32 : 1;
 IDX_SYMBOL : s32 : 2;
+KEYWORDS_SYMBOL : s32 : 3;
 
 lexer_init :: () {
     keywords = empty_map(string, Token.Kind, capacity = 64);
@@ -20,11 +21,15 @@ lexer_init :: () {
     map_add(*keywords, "let", .LET);
     map_add(*keywords, "match", .MATCH);
     map_add(*keywords, "type", .TYPE);
+    map_add(*keywords, "chase", .CHASE);
 
     map_add(*keywords, "or", .OR);
-    map_add(*keywords, "xor", .XOR);
     map_add(*keywords, "and", .AND);
     map_add(*keywords, "not", .NOT);
+    map_add(*keywords, "bitor", .BIT_OR);
+    map_add(*keywords, "bitxor", .BIT_XOR);
+    map_add(*keywords, "bitand", .BIT_AND);
+    map_add(*keywords, "bitnot", .BIT_NOT);
 
     map_add(*keywords, "true", .TRUE_VALUE);
     map_add(*keywords, "false", .FALSE_VALUE);
@@ -49,6 +54,7 @@ Symbols :: struct {
         assert(UNDERSCORE_SYMBOL == add_symbol(*syms, "_"));
         assert(IT_SYMBOL == add_symbol(*syms, "it"));
         assert(IDX_SYMBOL == add_symbol(*syms, "idx"));
+        assert(KEYWORDS_SYMBOL == add_symbol(*syms, "keywords"));
 
         return syms;
     }
@@ -69,11 +75,15 @@ Token :: struct {
         LET;
         MATCH;
         TYPE;
+        CHASE;
 
         OR;
-        XOR;
         AND;
         NOT;
+        BIT_OR;
+        BIT_XOR;
+        BIT_AND;
+        BIT_NOT;
 
         TRUE_VALUE;
         FALSE_VALUE;
@@ -144,7 +154,7 @@ Token :: struct {
         integer_value : u64;
         float_value : float64;
         string_value : string;
-        ident_symbol : s64;
+        ident_symbol : s32;
     }
 
     kind : Kind = .EOF;
@@ -178,7 +188,6 @@ Result :: struct(Value: Type, Error: Type = string) {
     }
 
     did_succeed: bool = true;
-    was_final: bool = false; // unused by lexer
     error: Error;
 }
 
@@ -463,7 +472,6 @@ start_result :: (lexer: *Lexer, $type: Type) -> Result(type) {
     result : Result(type);
     result.error = "internal error? result might not have been initialized";
     result.did_succeed = true;
-    result.was_final = true;
     result.begin = lexer.cursor;
     result.end = lexer.cursor;
 

@@ -16,10 +16,21 @@ main :: () {
 
     lexer_init();
 
-    lexer := Lexer.make("hello : Ast");
+    lexer := Lexer.make("build + asdf");
     parser := Parser.consume_lexer_and_make(*lexer);
 
-    parse_complete_expr(*parser);
+    for parser.tokens
+        print("% ", it.kind);
+    print("\n");
+
+    result := parse_statement_expr(*parser);
+    if result.did_succeed {
+        for result.value {
+            log("%", << it);
+        }
+    } else {
+        log("%", result.error);
+    }
 }
 
 #run main();
