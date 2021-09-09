@@ -42,7 +42,7 @@ main :: () {
 
     a : Hello1;
     b : Hello2;
-    try := Dynamic(Hello).make(*a);
+    try := Dyn(Hello).make(*a);
 }
 
 // #run main();

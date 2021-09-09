@@ -2,8 +2,8 @@
 #import "Basic";
 #import "Hash_Table";
 
-Dynamic :: struct(interface_name: Type) {
-    Self :: Dynamic(interface_name);
+Dyn :: struct(interface_name: Type) {
+    Self :: Dyn(interface_name);
     value: *void;
     // @Optimization use an enum instead of a Type object so case matching can
     // be optimized better during codegen
@@ -19,25 +19,33 @@ Dynamic :: struct(interface_name: Type) {
 }
 
 Dispatch :: struct {
+    InterfaceMember :: struct {
+        procedure_header: *Code_Procedure_Header;
+        procedure_body: *Code_Procedure_Body;
+    }
+
+    Interface :: struct {
+        interface_code: *Code_Struct;
+        members: Table(string, InterfaceMember);
+        implementors: [..] *Code_Struct;
+    }
+
     is_init: bool = false;
     workspace: Workspace;
-    table: Table([] u64, [..] Code_Struct, hash_sorted_hashes); // sorted name hashes -> list of interfaces
+    interfaces: [..] Interface;
 
     make :: (workspace: Workspace, allocator: Allocator = null, allocator_data: *void = null) -> Dispatch {
         data : Dispatch;
         init(*data, workspace, allocator, allocator_data);
+
         return data;
     }
 
     init :: (data: *Dispatch, workspace: Workspace, allocator: Allocator = null, allocator_data: *void = null) {
         assert(!data.is_init);
+
         data.is_init = true;
         data.workspace = workspace;
-        alloc := ifx allocator == null then context.allocator else allocator;
-        alloc_data := ifx allocator_data == null then context.allocator_data else allocator_data;
-        push_allocator(alloc, alloc_data);
-
-        init(*data.table);
     }
 
     message_handler :: (data: *Dispatch, msg: *Message) {
@@ -48,25 +56,33 @@ Dispatch :: struct {
             phase_msg := cast(*Message_Phase) msg;
             if phase_msg.phase == .TYPECHECKED_ALL_WE_CAN {
                 log("Typechecked all we can!\n");
-                // add_build_string();
             }
+
         case .TYPECHECKED;
             typechecked_msg := cast(*Message_Typechecked) msg;
+
             for typechecked : typechecked_msg.structs {
                 struct_definition := typechecked.expression;
-                if struct_definition.constants_block {
-                    for struct_definition.constants_block.members {
-                        log("member is named %, with serial %\n", it.name, it.serial);
-                    }
-                }
+                // if struct_definition.constants_block {
+                //     for struct_definition.constants_block.members {
+                //         log("constant member is named %\n", it.name);
+                //     }
+                // }
 
                 if struct_definition.block {
-                    for struct_definition.block.members {
-                        log("member is named %, with serial %\n", it.name, it.serial);
+                    for member: struct_definition.block.members {
+                        if member.kind != .DECLARATION
+                            continue;
+
+                        decl := cast(*Code_Declaration) member;
+                        if !(decl.flags & .IS_CONSTANT)
+                            continue;
+                        if !decl.expression     // no idea why this is sometimes false, but it is
+                            continue;
+
+                        log("member is named % with expression %\n", member.name, decl.expression.kind);
                     }
                 }
-
-                serials : [..] s64;
             }
         }
     }
