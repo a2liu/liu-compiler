@@ -6,71 +6,91 @@ Expr :: struct {
     Kind :: enum u16 {
         UNINITIALIZED :: 0;
 
-        // file
-        MODULE :: 10;
+        MODULE;
 
-        // statement
-        DECLARATION :: 20;
-
+        // statement expression
+        DECLARATION;
         // 1 declaration => b := 13
         // 3 declarations => a, b, c := 12, 13, 14
 
-        DECLARATION_COMPTIME; // a :: 12
         DECLARATION_SPLIT; // a, b, c := match(parser)
-        DECLARATION_COMPTIME_SPLIT; // a, b, c :: match(parser)
 
-        // complete
-        BLOCK :: 30;
+        // complete expression
+        BLOCK;
         TUPLE;
 
-        // binary ops
-        PLUS :: 40;
+        // binary expression
+        PLUS;
         MINUS;
         MULTIPLY;
         DIVIDE;
+        OR;
+        AND;
+        NOT;
+        BIT_OR;
+        BIT_XOR;
+        BIT_AND;
+        BIT_NOT;
 
-        // simple
-        REF :: 60;
-        CHASE;
+        // unary expression
+        REF;
+        DEREF;
         SUBSCRIPT;
 
-        // Atoms
-        IDENT :: 70;
+        // atom
+        IDENT;
     }
 
-    kind: Kind = .UNINITIALIZED;
-    begin: s32;
-    end: s32;
+    Flags :: enum_flags u16 {
+        COMPTIME;
+    }
+
+    kind : Kind = .UNINITIALIZED;
+    flags : Flags = 0;
+    begin : s32;
+    end : s32;
 }
 
 BinaryOp :: struct {
-    using _base: Expr;
-    left: *Expr;
-    right: *Expr;
+    using _base : Expr;
+    left : *Expr;
+    right : *Expr;
 }
 
 Tuple :: struct {
-    using _base: Expr;
+    using _base : Expr;
     _base.kind = .TUPLE;
-    members: [] *Expr;
+    members : [] *Expr; // members allocated right after tuple struct
 }
 
 Block :: struct {
-    using _base: Expr;
+    using _base : Expr;
     _base.kind = .BLOCK;
-    statements: [] *Expr;
+    statements : [] *Expr; // statements allocated right after block struct
 }
 
 Module :: struct {
-    using __base: Block;
-    __base.kind = .MODULE;
-    file: s32;
+    using _base : Expr;
+    _base.kind = .MODULE;
+    file : s32;
+    statements : [] *Expr; // statements allocated right after module struct
 }
 
 Ident :: struct {
-    using _base: Expr;
+    using _base : Expr;
     _base.kind = .IDENT;
     ident_symbol : s32;
+}
+
+Declaration :: struct {
+    using _base : Expr;
+    _base.kind = .DECLARATION;
+    ident_symbol : s32;
+    type_declaration_nullable : *Expr;
+    value_nullable : *Expr;
+}
+
+DeclarationSplit :: struct {
 }
 
 // it_index is the level in the tree you're at
@@ -154,12 +174,37 @@ Parser :: struct {
     }
 }
 
+parse_file :: (parser: *Parser, file: s32) -> Result([..] *Expr) {
+    push_enclosing(parser, .NONE);
+    eat_statement_separators(parser);
+
+    file_statements : [..] *Expr;
+    defer array_free(file_statements);
+
+    should_continue, token := peek(parser);
+    had_separator := true;
+    while should_continue {
+        if !had_separator
+            throw(token, "missing separator between end of previous expression and beginning of next one");
+
+        expr := unwrap(parse_statement_expr(parser));
+        array_add(*file_statements, expr);
+
+        had_separator = eat_statement_separators(parser);
+        should_continue, token = peek(parser);
+    }
+
+    module := Buck(Module);
+    module.statements = BuckArray(file_statements.count, *Expr, initialized = false);
+    memcpy(module.statements.data, file_statements.data, file_statements.count * size_of(*Expr));
+
+    ret(module);
+}
+
 // Expressions that cannot be assigned to a value or used in larger expression
 // without parens. Like assignment and variable mutation.
 parse_statement_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result(parser, *Expr);
-
-    eat_newlines(parser);
+    result := start_result(parser);
 
     // simple declarations
     success, matches := match(parser, .IDENT, .COLON);
@@ -178,7 +223,7 @@ parse_statement_expr :: (parser: *Parser) -> Result(*Expr) {
 // Expressions that can be assigned to a value without parens, but can't be in a
 // larger expression without parens. i.e. blocks or control flow stuff
 parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result(parser, *Expr);
+    result := start_result(parser);
 
     // control flow
     // @Todo
@@ -187,11 +232,33 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
     success, matches := match(parser, .LBRACE);
     if success {
         push_enclosing(parser, .BRACE);
-        eat_newlines(parser);
+        eat_statement_separators(parser);
+        block_statements : [..] *Expr;
+        defer array_free(block_statements);
 
-        // @Todo
+        should_continue, token := peek(parser);
+        had_separator := true;
+        while should_continue {
+            if token.kind == .RBRACE {
+                block := Buck(Block);
+                block.statements = BuckArray(block_statements.count, *Expr, initialized = false);
+                memcpy(block.statements.data, block_statements.data, block_statements.count * size_of(*Expr));
 
-        assert(false, "unimplemented");
+                ret(block);
+            }
+
+            if !had_separator
+                throw(token, "missing separator between end of previous expression and beginning of next one");
+
+            expr := unwrap(parse_statement_expr(parser));
+            array_add(*block_statements, expr);
+
+            had_separator = eat_statement_separators(parser);
+            should_continue, token = peek(parser);
+        }
+
+        token := *parser.tokens[parser.tokens.count - 1];
+        throw(token, "scope ended before closing '}'");
     }
 
     expr := unwrap(parse_binary_expr(parser));
@@ -204,26 +271,38 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
     defer array_free(tuple_exprs);
 
     while success {
+        // Statement breaks should stop tuple parsing
+        has_next, token := peek(parser);
+        if !has_next    break;
+        if token.kind == .SEMICOLON     break;
+
+        // this will never show up in parser.enclosing == .PAREN
+        if token.kind == .NEWLINE       break;
+
+        if parser.enclosing == {
+        case .PAREN;
+            if token.kind == .RPAREN    break;
+        case .BRACKET;
+            if token.kind == .RBRACKET  break;
+        case .BRACE;
+            if token.kind == .RBRACE    break;
+        }
+
         expr = unwrap(parse_binary_expr(parser));
         array_add(*tuple_exprs, expr);
         success, matches = match(parser, .COMMA);
     }
 
-    // it's not a tuple
-    if tuple_exprs.count == 0     ret(expr);
-
-    array_add(*tuple_exprs, expr);
     tuple := Buck(Tuple);
-    exprs := BuckArray(tuple_exprs.count, *Expr, initialized = false);
-    memcpy(exprs.data, tuple_exprs.data, exprs.count * size_of(*Expr));
-    tuple.members = exprs;
+    tuple.members = BuckArray(tuple_exprs.count, *Expr, initialized = false);
+    memcpy(tuple.members.data, tuple_exprs.data, tuple_exprs.count * size_of(*Expr));
 
     ret(tuple);
 }
 
 // binary expressions, like a + b + c + d
 parse_binary_expr :: (parser: *Parser, min_precedence := 0) -> Result(*Expr) {
-    result := start_result(parser, *Expr);
+    result := start_result(parser);
 
     expr := unwrap(parse_simple_expr(parser));
 
@@ -256,14 +335,14 @@ parse_binary_expr :: (parser: *Parser, min_precedence := 0) -> Result(*Expr) {
 
 // infix and postfix expressions, like chase a[1], a.b.c[13]
 parse_simple_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result(parser, *Expr);
+    result := start_result(parser);
     expr := unwrap(parse_atom(parser));
     ret(expr);
 }
 
 // Atoms like 12, begin, (12 + 13)
 parse_atom :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result(parser, *Expr);
+    result := start_result(parser);
 
     success, matches := match(parser, .IDENT);
     if success {
@@ -273,13 +352,51 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
         ret(expr);
     }
 
-    // parenthesized expression is the only other option
-    expect_match(parser, .LPAREN);
-    push_enclosing(parser, .PAREN);
-    expr := unwrap(parse_statement_expr(parser));
-    expect_match(parser, .RPAREN);
+    success, matches = match(parser, .LPAREN);
+    if success {
+        push_enclosing(parser, .PAREN);
+        eat_statement_separators(parser);
+        paren_statements : [..] *Expr;
+        defer array_free(paren_statements);
 
-    ret(expr);
+        should_continue, token := peek(parser);
+        had_separator := true;
+        while should_continue {
+            if token.kind == .RPAREN {
+                if paren_statements.count == 0 // can't have empty paren
+                    throw("this set of parentheses is empty");
+
+                if paren_statements.count == 1 {
+                    expr := paren_statements[0];
+                    result.begin = expr.begin;
+                    result.end = expr.end;
+                    result.value = expr;
+
+                    return result;
+                }
+
+                block := Buck(Block);
+                block.statements = BuckArray(paren_statements.count, *Expr, initialized = false);
+                memcpy(block.statements.data, paren_statements.data, paren_statements.count * size_of(*Expr));
+
+                ret(block);
+            }
+
+            if !had_separator
+                throw(token, "missing separator between end of previous expression and beginning of next one");
+
+            expr := unwrap(parse_statement_expr(parser));
+            array_add(*paren_statements, expr);
+
+            had_separator = eat_statement_separators(parser);
+            should_continue, token = peek(parser);
+        }
+
+        throw(*parser.tokens[parser.tokens.count - 1], "scope ended before closing ')'");
+    }
+
+    token := expect_peek(parser);
+    throw(token, "didn't recognize token when parsing atom");
 }
 
 #scope_file
@@ -338,9 +455,47 @@ ret :: (expr: *Expr) #expand {
     `return result;
 }
 
-start_result :: (parser: *Parser, $type: Type) -> Result(type) {
-    result : Result(type);
+throw :: (message: string) #expand {
+    result := `result;
+    result.did_succeed = false;
+    result.error = message;
+
+    `return result;
+}
+
+throw :: (token: *Token, message: string) #expand {
+    result := `result;
+    result.begin = token.begin;
+    result.end = token.end;
+    result.did_succeed = false;
+    result.error = message;
+
+    `return result;
+}
+
+start_result :: (parser: *Parser) -> Result(*Expr) #expand {
+    result : Result(*Expr);
     result.error = "internal error? result might not have been initialized";
+
+    if parser.enclosing == .PAREN {
+        while parser.cursor < parser.tokens.count {
+            token := *parser.tokens[parser.cursor];
+            if token.kind != .NEWLINE
+                break;
+
+            parser.cursor += 1;
+        }
+    }
+
+    // @Cleanup Is this useful?
+    if parser.cursor >= parser.tokens.count {
+        result.begin = parser.tokens[parser.tokens.count - 1].end;
+        result.end = result.begin;
+        result.did_succeed = false;
+        result.error = "got to the end of the file when we expected another token";
+        `return result;
+    }
+
     result.begin = parser.tokens[parser.cursor].begin;
     result.end = result.begin;
 
@@ -362,7 +517,8 @@ peek :: (parser: *Parser) -> bool, *Token #expand {
     return false, null;
 }
 
-expect_peek :: (parser: *Parser) -> *Token #expand {
+expect_peek :: (parser: *Parser,
+                message := "got to the end of the file when we expected another token") -> *Token #expand {
     while parser.cursor < parser.tokens.count {
         token := *parser.tokens[parser.cursor];
         if token.kind == .NEWLINE && parser.enclosing == .PAREN {
@@ -375,9 +531,10 @@ expect_peek :: (parser: *Parser) -> *Token #expand {
     }
 
     result := `result;
-    result.end = parser.tokens[parser.tokens.count - 1].end;
+    result.begin = parser.tokens[parser.tokens.count - 1].end;
+    result.end = result.begin;
     result.did_succeed = false;
-    result.error = "got to the end of the file when we expected another token";
+    result.error = message;
 
     `return result;
 }
@@ -395,7 +552,8 @@ expect :: (parser: *Parser) -> *Token #expand {
     }
 
     result := `result;
-    result.end = parser.tokens[parser.tokens.count - 1].end;
+    result.begin = parser.tokens[parser.tokens.count - 1].end;
+    result.end = result.begin;
     result.did_succeed = false;
     result.error = "got to the end of the file when we expected another token";
     assert(false);
@@ -440,9 +598,8 @@ expect_match :: (parser: *Parser, to_match: .. Token.Kind) -> [] Token #expand {
     }
 
     result := `result;
-    last := parser.tokens[parser.tokens.count - 1];
-    result.begin = last.begin;
-    result.end = last.end;
+    result.begin = parser.tokens[parser.tokens.count - 1].end;
+    result.end = result.begin;
     result.did_succeed = false;
     result.error = "expected to find match to tokens";
 
@@ -453,49 +610,6 @@ push_enclosing :: (parser: *Parser, enclosing: Parser.Enclosing) #expand {
     previous := parser.enclosing;
     parser.enclosing = enclosing;
     `defer parser.enclosing = previous;
-}
-
-expr_is_over :: (parser: *Parser) -> bool {
-    success := false;
-    token : *Token;
-
-    while parser.cursor < parser.tokens.count {
-        token = *parser.tokens[parser.cursor];
-        if token.kind == .NEWLINE && parser.enclosing == .PAREN {
-            parser.cursor += 1;
-            continue;
-        }
-
-        success = true;
-        break;
-    }
-
-    if !success     return true;
-    if kind == .SEMICOLON     return true;
-
-    if #complete parser.enclosing == {
-    case .NONE;
-        return kind == .NEWLINE;
-    case .PAREN;
-        return kind == .RPAREN;
-    case .BRACKET;
-        return kind == .RBRACKET;
-    case .BRACE;
-        return kind == .RBRACE || kind == .NEWLINE;
-    }
-}
-
-token_would_end_scope :: (parser: *Parser, kind: Token.Kind) -> bool {
-    if #complete parser.enclosing == {
-    case .NONE;
-        return false;
-    case .PAREN;
-        return kind == .RPAREN;
-    case .BRACKET;
-        return kind == .RBRACKET;
-    case .BRACE;
-        return kind == .RBRACE;
-    }
 }
 
 finalize_statement :: (parser: *Parser) -> bool #expand {
@@ -574,7 +688,8 @@ match :: (parser: *Parser, to_match: .. Token.Kind) -> bool, [] Token #expand {
     return false, tokens;
 }
 
-eat_newlines :: (parser: *Parser) #expand {
+eat_newlines :: (parser: *Parser) -> bool #expand {
+    cursor := parser.cursor;
     end := `result.end;
     while parser.cursor < parser.tokens.count {
         token := *parser.tokens[parser.cursor];
@@ -585,5 +700,28 @@ eat_newlines :: (parser: *Parser) #expand {
     }
 
     `result.end = end;
+    return parser.cursor != cursor;
 }
 
+eat_statement_separators :: (parser: *Parser) -> bool #expand {
+    found_separator := false;
+    end := `result.end;
+    while parser.cursor < parser.tokens.count {
+        token := *parser.tokens[parser.cursor];
+        if token.kind == {
+        case .NEWLINE;
+            if parser.enclosing != .PAREN
+                found_separator = true;
+        case .SEMICOLON;
+            found_separator = true;
+        case;
+            break;
+        }
+
+        end = token.end;
+        parser.cursor += 1;
+    }
+
+    `result.end = end;
+    return found_separator;
+}
