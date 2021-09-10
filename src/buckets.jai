@@ -74,7 +74,12 @@ bucket_allocator :: (mode: Allocator_Mode, size: s64, old_size: s64,
     return BucketList.alloc(b, size);
 }
 
-Buck :: ($T: Type) -> *T {
+Buck :: ($T: Type, $initialized := true) -> *T {
     push_allocator(bucket_allocator, context.buckets);
-    return New(T);
+    return New(T, initialized = initialized);
+}
+
+BuckArray :: (count: s64, $T: Type, $initialized := true) -> [] T {
+    push_allocator(bucket_allocator, context.buckets);
+    return NewArray(count, T, initialized = initialized);
 }

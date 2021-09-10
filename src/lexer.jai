@@ -22,6 +22,8 @@ lexer_init :: () {
     map_add(*keywords, "match", .MATCH);
     map_add(*keywords, "type", .TYPE);
     map_add(*keywords, "chase", .CHASE);
+    map_add(*keywords, "break", .BREAK);
+    map_add(*keywords, "continue", .CONTINUE);
 
     map_add(*keywords, "or", .OR);
     map_add(*keywords, "and", .AND);
@@ -76,6 +78,8 @@ Token :: struct {
         MATCH;
         TYPE;
         CHASE;
+        BREAK;
+        CONTINUE;
 
         OR;
         AND;
@@ -127,9 +131,9 @@ Token :: struct {
         LEFT_ARROW;
         RIGHT_DOUBLE_ARROW;
 
-        LBRACE;
+        LBRACE; // {
         RBRACE;
-        LBRACKET;
+        LBRACKET; // [
         RBRACKET;
         LPAREN;
         RPAREN;
