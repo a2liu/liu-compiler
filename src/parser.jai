@@ -50,23 +50,40 @@ Ident :: struct {
     ident_symbol : s32;
 }
 
+// it_index is the level in the tree you're at
 for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
     #assert(!flags);
 
-    `it_index : void;
-    nodes : [..] *Expr;
-    array_add(*nodes, iter);
+    Node :: struct {
+        expr: *Expr;
+        level: s64;
+    }
+    nodes : [..] Node;
+    node : Node;
+    node.expr = iter;
+    node.level = 0;
+    array_add(*nodes, node);
 
     while nodes.count > 0 {
-        `it : *Expr = pop(*nodes);
+        node = pop(*nodes);
+        `it := node.expr;
+        `it_index := node.level;
 
         #insert body;
 
         if it.kind == {
-        case .PLUS;
-            node := cast(*BinaryOp) it;
-            array_add(*nodes, node.right);
-            array_add(*nodes, node.left);
+        // Binary op
+        case .PLUS;     #through;
+        case .MINUS;    #through;
+        case .MULTIPLY; #through;
+        case .DIVIDE;
+            binary := cast(*BinaryOp) it;
+            node.level += 1;
+            node.expr = binary.right;
+            array_add(*nodes, node);
+
+            node.expr = binary.left;
+            array_add(*nodes, node);
         }
     }
 }
@@ -235,12 +252,12 @@ binary_operator_info :: (kind: Token.Kind) -> bool, BinaryOpInfo {
     if kind == {
     case .PLUS;
         info.op_kind = .PLUS;
-        info.precedence = 20;
+        info.precedence = 10;
         info.is_left_to_right = true;
 
     case .MINUS;
         info.op_kind = .MINUS;
-        info.precedence = 20;
+        info.precedence = 10;
         info.is_left_to_right = true;
 
     case .STAR;

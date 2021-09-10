@@ -16,7 +16,7 @@ main :: () {
 
     lexer_init();
 
-    lexer := Lexer.make("build + asdf");
+    lexer := Lexer.make("build + asdf * fdsa");
     parser := Parser.consume_lexer_and_make(*lexer);
 
     for parser.tokens
