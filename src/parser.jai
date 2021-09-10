@@ -257,7 +257,7 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
             should_continue, token = peek(parser);
         }
 
-        token := *parser.tokens[parser.tokens.count - 1];
+        token = *parser.tokens[parser.tokens.count - 1];
         throw(token, "scope ended before closing '}'");
     }
 
@@ -300,8 +300,14 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
     ret(tuple);
 }
 
+parse_binary_expr :: (parser: *Parser) -> Result(*Expr) {
+    result := start_result(parser);
+    expr := unwrap(parse_simple_expr(parser));
+    ret(expr);
+}
+
 // binary expressions, like a + b + c + d
-parse_binary_expr :: (parser: *Parser, min_precedence := 0) -> Result(*Expr) {
+parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
     result := start_result(parser);
 
     expr := unwrap(parse_simple_expr(parser));
@@ -403,34 +409,82 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
 
 BinaryOpInfo :: struct {
     op_kind: Expr.Kind;
-    precedence: u8;
-    is_left_to_right: bool;
+    precedence: u8 = ---;
+    is_left_to_right: bool = true;
 }
 
 // @Todo This could probably be like compile-time or something
 binary_operator_info :: (kind: Token.Kind) -> bool, BinaryOpInfo {
     success := true;
     info : BinaryOpInfo;
+
     if kind == {
     case .PLUS;
         info.op_kind = .PLUS;
-        info.precedence = 10;
-        info.is_left_to_right = true;
+        info.precedence = 50;
 
     case .MINUS;
         info.op_kind = .MINUS;
-        info.precedence = 10;
-        info.is_left_to_right = true;
+        info.precedence = 50;
 
+    // Multiplication
     case .STAR;
         info.op_kind = .MULTIPLY;
-        info.precedence = 20;
-        info.is_left_to_right = true;
+        info.precedence = 60;
 
     case .DIVIDE;
-        info.op_kind = .MINUS;
+        info.op_kind = .DIVIDE;
+        info.precedence = 60;
+
+    // Comparison
+    case .EQUALS;
+        info.op_kind = .EQUALS;
         info.precedence = 20;
-        info.is_left_to_right = true;
+
+    case .NOT_EQUALS;
+        info.op_kind = .NOT_EQUALS;
+        info.precedence = 20;
+
+    case .DOUBLE_EQUALS;
+        info.op_kind = .DOUBLE_EQUALS;
+        info.precedence = 20;
+
+    case .LESS_THAN;
+        info.op_kind = .LESS_THAN;
+        info.precedence = 20;
+
+    case .LEQ_THAN;
+        info.op_kind = .LEQ_THAN;
+        info.precedence = 20;
+
+    case .GREATER_THAN;
+        info.op_kind = .GREATER_THAN;
+        info.precedence = 20;
+
+    case .GEQ_THAN;
+        info.op_kind = .GEQ_THAN;
+        info.precedence = 20;
+
+    // Boolean and bitwise operators
+    case .OR;
+        info.op_kind = .DIVIDE;
+        info.precedence = 10;
+
+    case .AND;
+        info.op_kind = .AND;
+        info.precedence = 10;
+
+    case .BIT_OR;
+        info.op_kind = .BIT_OR;
+        info.precedence = 10;
+
+    case .BIT_XOR;
+        info.op_kind = .BIT_XOR;
+        info.precedence = 10;
+
+    case .BIT_AND;
+        info.op_kind = .BIT_AND;
+        info.precedence = 10;
 
     case;
         success = false;

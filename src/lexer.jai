@@ -28,11 +28,9 @@ lexer_init :: () {
 
     map_add(*keywords, "or", .OR);
     map_add(*keywords, "and", .AND);
-    map_add(*keywords, "not", .NOT);
     map_add(*keywords, "bitor", .BIT_OR);
     map_add(*keywords, "bitxor", .BIT_XOR);
     map_add(*keywords, "bitand", .BIT_AND);
-    map_add(*keywords, "bitnot", .BIT_NOT);
 
     map_add(*keywords, "true", .TRUE_VALUE);
     map_add(*keywords, "false", .FALSE_VALUE);
@@ -85,11 +83,9 @@ Token :: struct {
 
         OR;
         AND;
-        NOT;
         BIT_OR;
         BIT_XOR;
         BIT_AND;
-        BIT_NOT;
 
         TRUE_VALUE;
         FALSE_VALUE;
@@ -114,6 +110,7 @@ Token :: struct {
         COMMA;
         COLON;
         EXCLAMATION;
+        TILDE;
         STAR;
         DOUBLE_STAR;
         PERCENT;
@@ -130,7 +127,7 @@ Token :: struct {
         LEQ_THAN;
         GREATER_THAN;
         GEQ_THAN;
-        LEFT_ARROW;
+        RIGHT_ARROW;
         RIGHT_DOUBLE_ARROW;
 
         LBRACE; // {
@@ -142,12 +139,11 @@ Token :: struct {
 
         // Unused
         DOT_DOT_EQUAL;
-        TILDE;
         TICK;
         DOLLAR;
         QUESTION;
-        RIGHT_ARROW;
         CARET;
+        LEFT_ARROW;
         A_CIRCLE;
         BACKSLASH;
         AMPERSAND;
@@ -350,6 +346,10 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
         }
 
         result.kind = .GREATER_THAN;
+        return result;
+
+    case #char "~";
+        result.kind = .TILDE;
         return result;
 
     case #char "!";
