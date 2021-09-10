@@ -3,48 +3,84 @@
 Math :: #import "Math";
 
 mem_eq :: (a: *$T, b: *T) -> bool {
-  build_bitset :: (info: *$T) -> string {
-    bit_array : Bit_Array;
-    init_bit_array(*bit_array, info.runtime_size);
-    set_all_bits(*bit_array);
+    build_bitset :: (info: *$T) -> string {
+        bit_array : Bit_Array;
+        init_bit_array(*bit_array, info.runtime_size);
+        set_all_bits(*bit_array);
 
-    return sprint("Bit_Array.{ slots = s64.%, count = % };", bit_array.slots, bit_array.count);
-  }
-
-  build_bitset :: (info: *Type_Info_Struct) -> string {
-    bit_array : Bit_Array;
-    init_bit_array(*bit_array, info.runtime_size);
-
-    for info.members {
-      offset := it.offset_in_bytes;
-      size := it.type.runtime_size;
-
-      for index: offset..offset+size-1 set_bit(*bit_array, index);
+        return sprint("Bit_Array.{ slots = s64.%, count = % };", bit_array.slots, bit_array.count);
     }
 
-    return sprint("Bit_Array.{ slots = s64.%, count = % };", bit_array.slots, bit_array.count);
-  }
+    build_bitset :: (info: *Type_Info_Struct) -> string {
+        bit_array : Bit_Array;
+        init_bit_array(*bit_array, info.runtime_size);
 
-  bit_array :: #insert #run build_bitset(type_info(T));
+        for info.members {
+            offset := it.offset_in_bytes;
+            size := it.type.runtime_size;
 
-  mem_a, mem_b := cast(*u8) a, cast(*u8) b;
-  for :only_set bit_array {
-    if mem_a[it_index] != mem_b[it_index] return false;
-  }
+            for index: offset..offset+size-1 set_bit(*bit_array, index);
+        }
 
-  return true;
+        return sprint("Bit_Array.{ slots = s64.%, count = % };", bit_array.slots, bit_array.count);
+    }
+
+    bit_array :: #insert #run build_bitset(type_info(T));
+
+    mem_a, mem_b := cast(*u8) a, cast(*u8) b;
+    for :only_set bit_array {
+        if mem_a[it_index] != mem_b[it_index] return false;
+    }
+
+    return true;
 }
 
 Cond :: struct (code: Code) {}
 for_expansion :: (cond: *Cond, body: Code, flags: For_Flags) #expand {
     #assert(!flags);
 
-    for iterator : 0..Math.S64_MAX {
-        `it_index := iterator;
+    `it_index : void;
+    while true {
         `it := #insert cond.code;
 
         if it   #insert body;
         else    break;
+    }
+}
+
+named_break : struct {} : .{};
+for_expansion :: (iter: *type_of(named_break), body: Code, flags: For_Flags) #expand {
+    `it : void;
+    `it_index : void;
+
+    #insert (break = { return; }, continue = { return; }) body;
+}
+
+C_Style :: struct (condition: Code, after_loop: Code) {}
+for_expansion :: (iter: *C_Style, body: Code, flags: For_Flags) #expand {
+    #assert(!flags);
+
+    `it : void;
+    `it_index : void;
+
+    condition : bool = ---;
+    run_after_loop := false;
+    while true {
+        if run_after_loop {
+            #insert iter.after_loop;
+        } else {
+            run_after_loop = true;
+        }
+
+        {
+            condition = #insert iter.condition;
+        }
+
+        if condition {
+            #insert body;
+        } else {
+            break;
+        }
     }
 }
 

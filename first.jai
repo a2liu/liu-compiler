@@ -19,18 +19,24 @@ main :: () {
     lexer := Lexer.make("build + asdf * fdsa");
     parser := Parser.consume_lexer_and_make(*lexer);
 
+    print("Tokens: ");
     for parser.tokens
         print("% ", it.kind);
-    print("\n");
+    print("\n\n");
 
-    result := parse_statement_expr(*parser);
-    if result.did_succeed {
-        for result.value {
-            log("%", << it);
+    for result: parser {
+        if result.did_succeed {
+            for result.value {
+                print("%", << it);
+            }
+            print("\n");
+        } else {
+            log("%", result.error);
         }
-    } else {
-        log("%", result.error);
     }
+    print("\n");
 }
+
+
 
 #run main();

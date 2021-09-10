@@ -80,6 +80,7 @@ Token :: struct {
         DEREF;
         BREAK;
         CONTINUE;
+        RETURN;
 
         OR;
         AND;
