@@ -4,6 +4,7 @@
 #import "utils";
 #import "parser";
 #import "buckets";
+#import "typechecker";
 
 albert_logger :: (message: string, data: *void, info: Log_Info) {
     loc := info.location;

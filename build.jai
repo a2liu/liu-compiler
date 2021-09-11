@@ -22,8 +22,9 @@ init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string 
     modules : Table(string, string);
     init(*modules);
 
+    success := true;
     for path: import_path {
-        for f_info: bfs_visit_files(path, recursive = false) {
+        for f_info: bfs_visit_files(path, visit_directories = true, recursive = false) {
             full_name := copy_string(f_info.full_name);
             _path, _basename, _ext, _name := path_decomp(full_name);
             basename := copy_string(_basename);
@@ -34,6 +35,7 @@ init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string 
                 message := sprint("module defined at `%` conflicts with module with same import name at `%`",
                                     << previous, full_name);
                 compiler_report(message);
+                success = false;
             }
 
             table_set(*modules, basename, full_name);

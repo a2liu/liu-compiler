@@ -1,10 +1,11 @@
+#import "gone";
 #import "Basic";
 #import "buckets";
 #import "lexer";
 #import "utils";
 
 Expr :: struct {
-    Kind :: enum u16 {
+    Kind :: enum u8 {
         UNINITIALIZED :: 0;
 
         MODULE;
@@ -46,13 +47,14 @@ Expr :: struct {
         REF;
         DEREF;
         SUBSCRIPT;
+        DOT_ACCESS;
 
         // atom
         IDENT;
         EMPTY_PAREN;
     }
 
-    Flags :: enum_flags u16 {
+    Flags :: enum_flags u8 {
         COMPTIME;
         PARENTHESIZED;
     }
@@ -63,7 +65,7 @@ Expr :: struct {
     end : s32;
 }
 
-BinaryOp :: struct {
+BinaryExpr :: struct {
     using _base : Expr;
     left : *Expr;
     right : *Expr;
@@ -92,6 +94,13 @@ Ident :: struct {
     using _base : Expr;
     _base.kind = .IDENT;
     ident_symbol : s32;
+}
+
+DotAccess :: struct {
+    using _base : Expr;
+    _base.kind = .DOT_ACCESS;
+    field_symbol : s32;
+    base_object : *Expr;
 }
 
 Declaration :: struct {
@@ -186,7 +195,7 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
         case .BIT_OR;            #through;
         case .BIT_XOR;           #through;
         case .BIT_AND;
-            binary := cast(*BinaryOp) it;
+            binary := cast(*BinaryExpr) it;
             visit(binary.left, binary.right);
         }
     }
@@ -421,7 +430,7 @@ parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
         if info.check_operands
             unwrap(info.check_operands(expr, right));
 
-        new_expr := Buck(BinaryOp);
+        new_expr := Buck(BinaryExpr);
         new_expr.kind = info.op_kind;
         new_expr.left = expr;
         new_expr.right = right;
@@ -504,7 +513,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
 
 #scope_file
 
-BinaryOpInfo :: struct {
+BinaryExprInfo :: struct {
     op_kind: Expr.Kind;
     precedence: u8 = ---;
     is_left_to_right: bool = true;
@@ -540,9 +549,9 @@ check_keyword_binary_operands :: ($self: Expr.Kind, left: *Expr, right: *Expr) -
 }
 
 // @Todo This could probably be like compile-time or something
-binary_operator_info :: (kind: Token.Kind) -> bool, BinaryOpInfo {
+binary_operator_info :: (kind: Token.Kind) -> bool, BinaryExprInfo {
     success := true;
-    info : BinaryOpInfo;
+    info : BinaryExprInfo;
 
     if kind == {
     case .PLUS;

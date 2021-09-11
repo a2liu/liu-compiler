@@ -1,14 +1,10 @@
+#import "gone";
 #import "Basic";
 #import "hashmap";
 #import "strings";
 #import "write";
 
 keywords : Map(string, Token.Kind);
-
-UNDERSCORE_SYMBOL : s32 : 0;
-IT_SYMBOL : s32 : 1;
-IDX_SYMBOL : s32 : 2;
-KEYWORDS_SYMBOL : s32 : 3;
 
 lexer_init :: () {
     keywords = empty_map(string, Token.Kind, capacity = 64);
@@ -43,26 +39,8 @@ lexer_init :: () {
     map_add(*keywords, "s64", .S64_TYPE);
 }
 
-Symbols :: struct {
-    symbol_to_name : [..] string;
-    name_to_symbol : Map(string, s32);
-
-    make :: () -> Symbols {
-        syms : Symbols;
-        syms.name_to_symbol = empty_map(string, s32, capacity = 64);
-        array_reserve(*syms.symbol_to_name, 64);
-
-        assert(UNDERSCORE_SYMBOL == add_symbol(*syms, "_"));
-        assert(IT_SYMBOL == add_symbol(*syms, "it"));
-        assert(IDX_SYMBOL == add_symbol(*syms, "idx"));
-        assert(KEYWORDS_SYMBOL == add_symbol(*syms, "keywords"));
-
-        return syms;
-    }
-}
-
 Token :: struct {
-    Kind :: enum {
+    Kind :: enum u8 {
         EOF;
         LINE_COMMENT;
         BLOCK_COMMENT;
@@ -162,36 +140,8 @@ Token :: struct {
 
     kind : Kind = .EOF;
     using data : Data;
-    begin: s32;
-    end: s32;
-}
-
-has_members :: ($T: Type, members: .. string) -> bool {
-    info := type_info(T);
-
-    for member_name: members {
-        member := get_field(info, member_name);
-        if !member      return false;
-        if member.type != type_info(s32)    return false;
-    }
-
-    return true;
-}
-
-Result :: struct(Value: Type, Error: Type = string) {
-    #if #run type_info(Value).type == .STRUCT {
-        using value: Value;
-
-        #if #run !has_members(Value, "begin")   begin: s32;
-        #if #run !has_members(Value, "end")     end: s32;
-    } else {
-        value: Value;
-        begin: s32;
-        end: s32;
-    }
-
-    did_succeed: bool = true;
-    error: Error;
+    begin : s32;
+    end : s32;
 }
 
 Lexer :: struct {
@@ -528,17 +478,6 @@ lex_string_literal_after_quote_ :: (lexer: *Lexer, _result: Result(Token)) -> Re
     }
 
     return result;
-}
-
-add_symbol :: (syms: *Symbols, ident: string) -> s32 {
-    found, sym := map_find(*syms.name_to_symbol, ident);
-    if found    return sym;
-
-    sym = cast,trunc(s32) syms.symbol_to_name.count;
-    array_add(*syms.symbol_to_name, ident);
-    map_set(*syms.name_to_symbol, ident, sym);
-
-    return sym;
 }
 
 match :: (lexer: *Lexer, to_match: u8) -> bool #expand {
