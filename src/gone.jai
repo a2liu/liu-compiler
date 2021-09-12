@@ -4,7 +4,7 @@
 UNDERSCORE_SYMBOL : s32 : 0;
 IT_SYMBOL : s32 : 1;
 IDX_SYMBOL : s32 : 2;
-KEYWORDS_SYMBOL : s32 : 3;
+KEYWORD_ARGS_SYMBOL : s32 : 3;
 
 Symbols :: struct {
     symbol_to_name : [..] string;
@@ -18,7 +18,7 @@ Symbols :: struct {
         assert(UNDERSCORE_SYMBOL == add_symbol(*syms, "_"));
         assert(IT_SYMBOL == add_symbol(*syms, "it"));
         assert(IDX_SYMBOL == add_symbol(*syms, "idx"));
-        assert(KEYWORDS_SYMBOL == add_symbol(*syms, "keywords"));
+        assert(KEYWORD_ARGS_SYMBOL == add_symbol(*syms, "keyword_args"));
 
         return syms;
     }

@@ -99,8 +99,8 @@ Token :: struct {
         LEFT_SHIFT;
         RIGHT_SHIFT;
 
-        EQUALS;
-        NOT_EQUALS;
+        EQUAL_SIGN;
+        NOT_EQUAL_SIGN;
         DOUBLE_EQUALS;
         LESS_THAN;
         LEQ_THAN;
@@ -263,7 +263,7 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
             return result;
         }
 
-        result.kind = .EQUALS;
+        result.kind = .EQUAL_SIGN;
         return result;
 
     case #char "<"; // @Todo should the lexer try to prevent you from doing stupid stuff
@@ -305,7 +305,7 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
 
     case #char "!";
         if match(lexer, #char "=") {
-            result.kind = .NOT_EQUALS;
+            result.kind = .NOT_EQUAL_SIGN;
             return result;
         }
 

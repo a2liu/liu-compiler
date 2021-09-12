@@ -48,12 +48,16 @@ for_expansion :: (cond: *Cond, body: Code, flags: For_Flags) #expand {
     }
 }
 
-named_break : struct {} : .{};
+named_break : struct {};
 for_expansion :: (iter: *type_of(named_break), body: Code, flags: For_Flags) #expand {
     `it : void;
     `it_index : void;
 
-    #insert (break = { return; }, continue = { return; }) body;
+    should_run := true;
+    while should_run {
+        #insert body;
+        should_run = false;
+    }
 }
 
 C_Style :: struct (condition: Code, after_loop: Code) {}

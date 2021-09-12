@@ -5,7 +5,6 @@
 #import "String";
 
 #load "libs/files/module.jai";
-#load "libs/dynamic_dispatch.jai";
 
 init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string {
     w := compiler_create_workspace(workspace_name);

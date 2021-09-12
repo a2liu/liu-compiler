@@ -220,3 +220,5 @@ block_rounds :: inline (using state: *SipHashState, num_rounds: s64, data: u64) 
 
     v0 ^= data;
 }
+
+test :: () {}
