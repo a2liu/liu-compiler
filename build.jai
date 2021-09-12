@@ -121,7 +121,7 @@ is_initial_file :: (loc := #caller_location) -> bool {
     out_options.import_path = import_path;
     out_options.array_bounds_check = .ALWAYS;
     out_options.cast_bounds_check = .FATAL;
-    out_options.math_bounds_check = .NONFATAL;
+    out_options.math_bounds_check = .FATAL;
 
     set_build_options(out_options, w);
 

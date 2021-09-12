@@ -1,6 +1,11 @@
 #import "Basic";
 #import "hashmap";
 
+gone_logger :: (message: string, data: *void, info: Log_Info) {
+    loc := info.location;
+    print("[%:%,%] %\n", loc.fully_pathed_filename, loc.line_number, loc.character_number, message);
+}
+
 UNDERSCORE_SYMBOL : s32 : 0;
 IT_SYMBOL : s32 : 1;
 IDX_SYMBOL : s32 : 2;

@@ -1,6 +1,8 @@
 #import "Basic";
 #import "Bit_Array";
+#scope_file
 Math :: #import "Math";
+#scope_export
 
 mem_eq :: (a: *$T, b: *T) -> bool {
     build_bitset :: (info: *$T) -> string {

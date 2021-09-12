@@ -17,7 +17,6 @@ lexer_init :: () {
     map_add(*keywords, "let", .LET);
     map_add(*keywords, "match", .MATCH);
     map_add(*keywords, "type", .TYPE);
-    map_add(*keywords, "deref", .DEREF);
     map_add(*keywords, "break", .BREAK);
     map_add(*keywords, "continue", .CONTINUE);
     map_add(*keywords, "throw", .THROW);
@@ -55,7 +54,6 @@ Token :: struct {
         LET;
         MATCH;
         TYPE;
-        DEREF;
         BREAK;
         CONTINUE;
         RETURN;
@@ -131,10 +129,19 @@ Token :: struct {
         DOUBLE_VERTICAL;
     }
 
-    Data :: union {
+    Data :: struct {
+        _begin : void;
+        #place _begin;
         integer_value : u64;
+        is_negative : bool;
+
+        #place _begin;
         float_value : float64;
+
+        #place _begin;
         string_value : string;
+
+        #place _begin;
         ident_symbol : s32;
     }
 
@@ -384,6 +391,7 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
 
         result.kind = .INTEGER_LITERAL;
         result.integer_value = value;
+        result.is_negative = false;
         return result;
     }
 

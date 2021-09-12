@@ -32,7 +32,9 @@ TypeChecker :: struct {
 Scope :: struct {
 }
 
-typecheck_module :: (module: *ModuleExpr) {
+typecheck_module :: (module: *ModuleExpr) -> Result(void) {
+    result : Result(void);
     checker := TypeChecker.make();
+    return result;
 }
 

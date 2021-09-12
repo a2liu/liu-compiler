@@ -3,6 +3,7 @@
 #import "buckets";
 #import "lexer";
 #import "utils";
+Math :: #import "Math";
 
 Expr :: struct {
     Kind :: enum u8 {
@@ -45,7 +46,7 @@ Expr :: struct {
 
         // unary expression
         REF;
-        DEREF;
+        DEREF; // ptr[]
         SUBSCRIPT;
         DOT_ACCESS;
         CALL;
@@ -53,6 +54,9 @@ Expr :: struct {
         // atom
         IDENT;
         EMPTY_PAREN;
+        PAREN;
+        S64;
+        U64;
     }
 
     SyntaxFlags :: enum_flags u8 {
@@ -89,6 +93,11 @@ BinaryExpr :: struct {
     right : *Expr;
 }
 
+UnaryExpr :: struct {
+    using _base : Expr;
+    base: *Expr;
+}
+
 TupleExpr :: struct {
     using _base : Expr;
     _base.kind = .TUPLE;
@@ -99,6 +108,12 @@ BlockExpr :: struct {
     using _base : Expr;
     _base.kind = .BLOCK;
     statements : [] *Expr; // statements allocated right after block struct
+}
+
+ParenExpr :: struct {
+    using _base : Expr;
+    _base.kind = .PAREN;
+    statements : [] *Expr; // statements allocated right after paren struct
 }
 
 ModuleExpr :: struct {
@@ -115,10 +130,29 @@ CallExpr :: struct {
     arguments : [] *Expr; // arguments allocated right after call struct
 }
 
+SubscriptExpr :: struct {
+    using _base : Expr;
+    _base.kind = .SUBSCRIPT;
+    callee: *Expr;
+    arguments : [] *Expr; // arguments allocated right after subscript struct
+}
+
 IdentExpr :: struct {
     using _base : Expr;
     _base.kind = .IDENT;
     ident_symbol : s32;
+}
+
+U64Expr :: struct {
+    using _base : Expr;
+    _base.kind = .U64;
+    value : u64;
+}
+
+S64Expr :: struct {
+    using _base : Expr;
+    _base.kind = .S64;
+    value : s64;
 }
 
 DotAccessExpr :: struct {
@@ -148,17 +182,31 @@ DeclarationSplitExpr :: struct {
 for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
     #assert(!flags);
 
+    // @Todo Eventually do we want to use this stuff for like, visitor pattern whatevers?
     Node :: struct {
         expr: *Expr;
         level: s64;
     }
 
-    visit :: (exprs: .. *Expr) #expand {
+    visit :: (exprs: .. Any) #expand {
+        node := `node;
+        nodes := *`nodes;
         for < exprs {
-            if it == null       continue;
-            node := `node;
-            node.expr = it;
-            array_add(*`nodes, node);
+            if it.value_pointer == null       continue;
+            info := it.type;
+
+            if info == type_info(*Expr) {
+                node.expr = << cast(**Expr) it.value_pointer;
+                array_add(nodes, node);
+            }
+
+            if info == type_info([] *Expr) {
+                exprs := << cast(*[] *Expr) it.value_pointer;
+                for < exprs {
+                    node.expr = it;
+                    array_add(nodes, node);
+                }
+            }
         }
     }
 
@@ -185,15 +233,15 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
 
         case .MODULE;
             module := cast(*ModuleExpr) it;
-            visit(..module.statements);
+            visit(module.statements);
 
         case .BLOCK;
             block := cast(*BlockExpr) it;
-            visit(..block.statements);
+            visit(block.statements);
 
         case .TUPLE;
             tuple := cast(*TupleExpr) it;
-            visit(..tuple.members);
+            visit(tuple.members);
 
         case .DECLARATION;
             decl := cast(*DeclarationExpr) it;
@@ -202,6 +250,14 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
         case .DECLARATION_SPLIT;
             decl := cast(*DeclarationSplitExpr) it;
             visit(decl.type_declaration_nullable, decl.value_nullable);
+
+        case .CALL;
+            call := cast(*CallExpr) it;
+            visit(call.callee, call.arguments);
+
+        case .SUBSCRIPT;
+            subscript := cast(*SubscriptExpr) it;
+            visit(subscript.callee, subscript.arguments);
 
         // Binary op
         case .PLUS;             #through;
@@ -231,27 +287,18 @@ Parser :: struct {
     tokens : [..] Token;
     cursor : s64 = 0;
     enclosing : Token.Kind = .EOF;
+    enable_assign_binary_expr : bool = false;
 
     consume_lexer_and_make :: (lexer: *Lexer) -> Result(Parser) {
         result : Result(Parser);
         parser := *result.value;
 
-        token := lex_token(lexer);
         while true {
-            if !token.did_succeed {
-                result.did_succeed = false;
-                result.error = token.error;
-                result.begin = token.begin;
-                result.end = token.end;
+            token := unwrap(lex_token(lexer));
 
-                return result;
-            }
-
-            array_add(*parser.tokens, token.value);
+            array_add(*parser.tokens, token);
             if token.kind == .EOF
                 break;
-
-            token = lex_token(lexer);
         }
 
         parser.buckets = BucketList.make();
@@ -268,7 +315,7 @@ Parser :: struct {
 
 for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
     assert(parser.enclosing == .EOF);
-    eat_statement_separators(extend_result = false);
+    eat_statement_separators();
 
     extra_exprs : [..] *Expr;
     extra_exprs_cursor := 0;
@@ -449,7 +496,7 @@ parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
     ret(expr);
 }
 
-// infix and postfix expressions, like deref a[1], a.b.c[13](12)
+// infix and postfix expressions, like a[1][], a.b.c[13](12)
 parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
     result := start_result();
 
@@ -458,13 +505,17 @@ parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
 
     expr := unwrap(parse_atom(parser));
 
-    while true {
-        success, matches := match(.LPAREN);
-        if success {
+    had_match := true;
+    while had_match {
+        had_match = false;
+
+        if match(.LPAREN) {
+            had_match = true;
+
             args : [..] *Expr;
             defer array_free(args);
 
-            for enclosed(.RPAREN, .COMMA) {
+            for enclosed(.RPAREN, .COMMA, enable_assign_binary_expr = true) {
                 unwrap(it);
                 arg := unwrap(parse_binary_expr(parser));
                 array_add(*args, arg);
@@ -475,10 +526,28 @@ parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
             call.arguments = BuckArray(args);
 
             expr = call;
-
         }
 
-        break;
+        if match(.LBRACKET) {
+            had_match = true;
+
+            args : [..] *Expr;
+            defer array_free(args);
+
+            // @Todo should i enable assign_binary_expr here? operator [] is basically
+            // just a function call.
+            for enclosed(.RBRACKET, .COMMA, enable_assign_binary_expr = true) {
+                unwrap(it);
+                arg := unwrap(parse_binary_expr(parser));
+                array_add(*args, arg);
+            }
+
+            call := Buck(SubscriptExpr);
+            call.callee = expr;
+            call.arguments = BuckArray(args);
+
+            expr = call;
+        }
     }
 
     ret(expr);
@@ -496,8 +565,33 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
         ret(expr);
     }
 
-    success, matches = match(.LPAREN);
+    success, matches = match(.INTEGER_LITERAL);
     if success {
+        token := *matches[0];
+        value := token.integer_value;
+        if token.is_negative {
+            // @Note this is the way it is to handle (S64_MAX * -1) - 1 being a valid S64 value.
+            if value - 1 > cast(u64) Math.S64_MAX
+                throw(token, "value is too large for s64!");
+
+            expr := Buck(S64Expr);
+            expr.value = cast,trunc(s64) (value - 1);
+            expr.value *= -1;
+            expr.value -= 1;
+
+            ret(expr);
+        }
+
+        if value > cast(u64) Math.S64_MAX
+            throw(token, "value is too large for s64!");
+
+        expr := Buck(S64Expr);
+        expr.value = cast,trunc(s64) value;
+
+        ret(expr);
+    }
+
+    if match(.LPAREN) {
         eat_statement_separators();
         paren_statements : [..] *Expr;
         defer array_free(paren_statements);
@@ -521,99 +615,23 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             ret(expr);
         }
 
-        block := Buck(BlockExpr);
-        block.statements = BuckArray(paren_statements);
+        paren := Buck(ParenExpr);
+        paren.statements = BuckArray(paren_statements);
 
-        ret(block);
+        ret(paren);
     }
 
-    token := peek();
-    throw(token, "didn't recognize token when parsing atom");
+    throw(peek(), "didn't recognize token when parsing atom");
 }
 
 #scope_file
-
-Enclosed :: struct {
-    separators : [] Token.Kind;
-    extra_stops : [] Token.Kind;
-    enclosing : Token.Kind;
-    consume_stop : bool;
-
-    // @Todo consume_stop and extra_stops are only in here for the benefit of tuples.
-    // maybe tuples just shouldn't use this code?
-}
-
-enclosed :: (enclosing: Token.Kind, separators: .. Token.Kind, extra_stops : [] Token.Kind = .[], consume_stop := true) -> Enclosed {
-    iter : Enclosed;
-    iter.enclosing = enclosing;
-    iter.separators = separators;
-    iter.extra_stops = extra_stops;
-    iter.consume_stop = consume_stop;
-
-    return iter;
-}
-
-for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
-    `it : Result(void);
-    `it_index : void;
-
-    parser : void;
-    p := `parser;
-
-    previous := p.enclosing;
-    p.enclosing = iter.enclosing;
-    defer p.enclosing = previous;
-
-    token := *p.tokens[p.cursor];
-    keep_looping, had_separator := true, true;
-    while keep_looping {
-        if token.kind == iter.enclosing || array_find(iter.extra_stops, token.kind) {
-            // we found a stopping point
-            if iter.consume_stop        p.cursor += 1;
-            break;
-        } else if !had_separator {
-            it.begin = token.begin;
-            it.end = token.end;
-            it.did_succeed = false;
-            it.error = "missing separator between end of previous expression and beginning of next one";
-        } else {
-            it.did_succeed = true;
-            it.begin = -1;
-            it.end = -1;
-        }
-
-        for look_for_separator: named_break {
-            #insert (break = { keep_looping = false; break look_for_separator; },
-                     continue = { break look_for_separator; }) body;
-        }
-
-        had_separator = false;
-        while true {
-            token = *p.tokens[p.cursor];
-            // @Todo this allows stuff like: name,,,,,,, 12
-            if array_find(iter.separators, token.kind) {
-                had_separator = true;
-                token = *p.tokens[p.cursor];
-                p.cursor += 1;
-                continue;
-            }
-
-            if token.kind == .NEWLINE && should_skip_newlines(p) {
-                token = *p.tokens[p.cursor];
-                p.cursor += 1;
-                continue;
-            }
-
-            break;
-        }
-    }
-}
-
 
 BinaryExprInfo :: struct {
     op_kind: Expr.Kind;
     precedence: u8 = ---;
     is_left_to_right: bool = true;
+    // @Todo this should be something like make_expr : (left, right) -> Result(*Expr)
+    // So that we can make assignment expressions a lil nicer right off the bat
     check_operands : (left: *Expr, right: *Expr) -> Result(void) = null;
 }
 
@@ -646,7 +664,6 @@ check_keyword_binary_operands :: ($self: Expr.Kind, left: *Expr, right: *Expr) -
 }
 
 binary_operator_info :: (kind: Token.Kind) -> bool, BinaryExprInfo {
-    success := true;
     info : BinaryExprInfo;
 
     if kind == {
@@ -671,6 +688,7 @@ binary_operator_info :: (kind: Token.Kind) -> bool, BinaryExprInfo {
     case .EQUAL_SIGN;
         info.op_kind = .ASSIGN;
         info.precedence = 10;
+        info.is_left_to_right = false;
 
     // Comparison
     case .NOT_EQUAL_SIGN;
@@ -724,10 +742,10 @@ binary_operator_info :: (kind: Token.Kind) -> bool, BinaryExprInfo {
         info.check_operands = #bake_arguments check_keyword_binary_operands(self = .BIT_AND);
 
     case;
-        success = false;
+        return false, info;
     }
 
-    return success, info;
+    return true, info;
 }
 
 unwrap :: (result: Result(void)) #expand {
@@ -771,14 +789,6 @@ ret :: (expr: *Expr) #expand {
 SpannedInterface :: struct {
     begin: s32;
     end: s32;
-}
-
-throw :: (message: string) #expand {
-    result := `result;
-    result.did_succeed = false;
-    result.error = message;
-
-    `return result;
 }
 
 throw :: (value: *$T/interface SpannedInterface, message: string) #expand {
@@ -882,14 +892,11 @@ match :: (to_match: .. Token.Kind) -> bool, [] Token #expand {
     return false, tokens;
 }
 
-eat_statement_separators :: ($extend_result := true) -> bool #expand {
+eat_statement_separators :: () -> bool #expand {
     parser : void;
     p := `parser;
 
     found_separator := false;
-    #if extend_result {
-    end := `result.end;
-    }
     while p.cursor < p.tokens.count {
         token := *p.tokens[p.cursor];
         if token.kind == {
@@ -902,20 +909,97 @@ eat_statement_separators :: ($extend_result := true) -> bool #expand {
             break;
         }
 
-        #if extend_result {
-        end = token.end;
-        }
         p.cursor += 1;
     }
 
-    #if extend_result {
-    `result.end = end;
-    }
     return found_separator;
 }
 
 should_skip_newlines :: (parser: *Parser) -> bool {
     return parser.enclosing == .RPAREN || parser.enclosing == .RBRACKET;
+}
+
+Enclosed :: struct {
+    separators : [] Token.Kind;
+    extra_stops : [] Token.Kind;
+    enclosing : Token.Kind;
+    consume_stop : bool;
+    enable_assign_binary_expr : bool;
+
+    // @Todo consume_stop and extra_stops are only in here for the benefit of tuples.
+    // maybe tuples just shouldn't use this code?
+}
+
+enclosed :: (enclosing: Token.Kind, separators: .. Token.Kind, extra_stops : [] Token.Kind = .[], consume_stop := true, enable_assign_binary_expr := false) -> Enclosed {
+    iter : Enclosed;
+    iter.enclosing = enclosing;
+    iter.separators = separators;
+    iter.extra_stops = extra_stops;
+    iter.consume_stop = consume_stop;
+    iter.enable_assign_binary_expr = enable_assign_binary_expr;
+
+    return iter;
+}
+
+for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
+    `it : Result(void);
+    `it_index : void;
+
+    parser : void;
+    p := `parser;
+
+    previous_enclosing := p.enclosing;
+    p.enclosing = iter.enclosing;
+    defer p.enclosing = previous_enclosing;
+
+    previous_assign_enable := p.enable_assign_binary_expr;
+    p.enclosing = iter.enclosing;
+    p.enable_assign_binary_expr = iter.enable_assign_binary_expr;
+    defer p.enable_assign_binary_expr = previous_assign_enable;
+
+    token := *p.tokens[p.cursor];
+    keep_looping, had_separator := true, true;
+    while keep_looping {
+        if token.kind == iter.enclosing || array_find(iter.extra_stops, token.kind) {
+            // we found a stopping point
+            if iter.consume_stop        p.cursor += 1;
+            break;
+        } else if !had_separator {
+            it.begin = token.begin;
+            it.end = token.end;
+            it.did_succeed = false;
+            it.error = "missing separator between end of previous expression and beginning of next one";
+        } else {
+            it.did_succeed = true;
+            it.begin = -1;
+            it.end = -1;
+        }
+
+        for look_for_separator: named_break {
+            #insert (break = { keep_looping = false; break look_for_separator; },
+                     continue = { break look_for_separator; }) body;
+        }
+
+        had_separator = false;
+        while true {
+            token = *p.tokens[p.cursor];
+            // @Todo this allows stuff like: name,,,,,,, 12
+            if array_find(iter.separators, token.kind) {
+                had_separator = true;
+                token = *p.tokens[p.cursor];
+                p.cursor += 1;
+                continue;
+            }
+
+            if token.kind == .NEWLINE && should_skip_newlines(p) {
+                token = *p.tokens[p.cursor];
+                p.cursor += 1;
+                continue;
+            }
+
+            break;
+        }
+    }
 }
 
 Buck :: ($T: Type) -> *T #expand {

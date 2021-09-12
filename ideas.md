@@ -1,10 +1,8 @@
 all scopes have same semantics, which are that compile-time constants get hoisted
-to top of scope and everyting else executes sequentially. Functions capture all
-variables in parent scope, which can happen because variable shadowing within the
-same scope is illegal.
+to top of scope and everyting else executes sequentially.
 
 ```
-f := func(a,b,c : int; d := "") string {
+f :: func(a,b,c : int; d := "") string {
   return "hello"
 }
 
@@ -43,14 +41,14 @@ to run, thus fully creating the type.
 object in the constructor, as well as makes it a lil more terse to create member
 methods.
 
-Assignment is a `binary` expression to allow for passing it as an argument to functions
-for keyword arguments. Mutate-assign shouldn't be though, because please no.
-
 Keyword arguments are defined by taking in an argument called keyword_args (which must be a struct).
 Keyword arguments assign to fields in that argument.
 
-Typechecking doesn't do opcode generation (unless it makes sense later but right now
-maybe not).
+Typechecking doesn't do opcode generation (unless it makes sense later but right
+now probably not).
 
 Scopes don't do the thing where they automatically become structs or whatever.
 That'll probably be a thing with modules, but that's it.
+
+Sidestep the whole "prefix vs infix operator" thing by just having a `:` after control
+flow. Like in Python.
