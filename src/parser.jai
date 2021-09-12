@@ -54,15 +54,32 @@ Expr :: struct {
         EMPTY_PAREN;
     }
 
-    Flags :: enum_flags u8 {
+    SyntaxFlags :: enum_flags u8 {
         COMPTIME;
         PARENTHESIZED;
     }
 
     kind : Kind = .UNINITIALIZED;
-    flags : Flags = 0;
+    flags : SyntaxFlags = 0;
     begin : s32;
     end : s32;
+
+    // Flags for when the exprs become typed
+    // TypeFlags :: enum_flags u16 {}
+
+    type : GoneType;
+    #place type;
+    do_not_used_s32 : s32;
+    do_not_used_u8 : u8;
+    padding_u8 : u8; // @Todo we can use these for flags
+    padding_u16 : u16;
+
+    // These bois make sure that nothing fishy happens to GoneType, because we use its padding for data
+    #assert(size_of(GoneType) == 8);
+    #assert(type_info(GoneType).members.count == 2);
+    #assert(type_info(type_of(GoneType.type_id)) == type_info(s32));
+    #assert(type_info(type_of(GoneType.pointer_count)) == type_info(u8));
+    #assert(type_info(GoneType).members[0].type == type_info(type_of(GoneType.type_id)));
 }
 
 BinaryExpr :: struct {
@@ -86,7 +103,7 @@ Block :: struct {
 Module :: struct {
     using _base : Expr;
     _base.kind = .MODULE;
-    file : s32;
+    file_id : s32;
     statements : [] *Expr; // statements allocated right after module struct
 }
 
@@ -209,12 +226,14 @@ Parser :: struct {
         BRACKET;
     }
 
+    buckets: BucketList;
     tokens : [..] Token;
     cursor : s64 = 0;
     enclosing : Enclosing = .NONE;
 
     consume_lexer_and_make :: (lexer: *Lexer) -> Result(Parser) {
         result : Result(Parser);
+        parser := *result.value;
 
         token := lex_token(lexer);
         while true {
@@ -230,24 +249,39 @@ Parser :: struct {
             if token.kind == .EOF
                 break;
 
-            array_add(*result.tokens, token.value);
+            array_add(*parser.tokens, token.value);
             token = lex_token(lexer);
         }
 
+        parser.buckets = BucketList.make();
         result.begin = -1;
         result.end = -1;
 
         return result;
     }
+
+    free :: (parser: *Parser) {
+        array_reset(*parser.tokens);
+    }
 }
 
-parse_file :: (parser: *Parser, file: s32) -> Result(*Module) {
+parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*Module) {
+    lexer := Lexer.make(file_data, symbols);
+    result : Result(*Module);
+    parser := unwrap(Parser.consume_lexer_and_make(*lexer));
+    defer Parser.free(*parser);
+    result = start_result(*Module);
 
     file_statements : [..] *Expr;
     defer array_free(file_statements);
 
+    for expr_result: parser {
+        expr := unwrap(expr_result);
+        array_add(*file_statements, expr);
+    }
 
     module := Buck(Module);
+    module.file_id = file_id;
     module.statements = BuckArray(file_statements.count, *Expr, initialized = false);
     memcpy(module.statements.data, file_statements.data, file_statements.count * size_of(*Expr));
 
@@ -256,11 +290,15 @@ parse_file :: (parser: *Parser, file: s32) -> Result(*Module) {
 
 // Expressions that cannot be assigned to a value or used in larger expression
 // without parens. Like assignment and variable mutation.
+//
+// On success, returns data through `additional`. This could probably be a lil cleaner,
+// but meh.
 parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Expr) {
-    result := start_result(parser);
+
+    result := start_result();
 
     // simple declarations
-    success, matches := match(parser, .IDENT, .COLON);
+    success, matches := match(.IDENT, .COLON);
     if success {
         // @Todo
     }
@@ -280,10 +318,10 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
 
 for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
     assert(parser.enclosing == .NONE);
-    eat_statement_separators(parser, extend_result = false);
+    eat_statement_separators(extend_result = false);
 
     // @Todo `should_continue` should really be named something else man
-    should_continue, token := peek(parser, extend_result = false);
+    should_continue, token := peek(extend_result = false);
     had_separator := true;
     extra_exprs : [..] *Expr;
     extra_exprs_cursor := 0;
@@ -316,28 +354,28 @@ for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
         }
 
         extra_exprs_cursor = 1;
-        had_separator = eat_statement_separators(parser, extend_result = false);
-        should_continue, token = peek(parser, extend_result = false);
+        had_separator = eat_statement_separators(extend_result = false);
+        should_continue, token = peek(extend_result = false);
     }
 }
 
 // Expressions that can be assigned to a value without parens, but can't be in a
 // larger expression without parens. i.e. blocks or control flow stuff
 parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result(parser);
+    result := start_result();
 
     // control flow
     // @Todo
 
     // Blocks
-    success, matches := match(parser, .LBRACE);
+    success, matches := match(.LBRACE);
     if success {
-        push_enclosing(parser, .BRACE);
-        eat_statement_separators(parser);
+        push_enclosing(.BRACE);
+        eat_statement_separators();
         block_statements : [..] *Expr;
         defer array_free(block_statements);
 
-        should_continue, token := peek(parser);
+        should_continue, token := peek();
         had_separator := true;
         while should_continue {
             if token.kind == .RBRACE {
@@ -353,8 +391,8 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
 
             unwrap(parse_statement_expr(parser, *block_statements));
 
-            had_separator = eat_statement_separators(parser);
-            should_continue, token = peek(parser);
+            had_separator = eat_statement_separators();
+            should_continue, token = peek();
         }
 
         token = *parser.tokens[parser.tokens.count - 1];
@@ -362,7 +400,7 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
     }
 
     expr := unwrap(parse_binary_expr(parser));
-    success, matches = match(parser, .COMMA);
+    success, matches = match(.COMMA);
     if !success         ret(expr);
 
     // tuples: a, b, c
@@ -372,7 +410,7 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
 
     while success {
         // Statement breaks should stop tuple parsing
-        has_next, token := peek(parser);
+        has_next, token := peek();
         if !has_next    break;
         if token.kind == .SEMICOLON     break;
 
@@ -390,7 +428,7 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
 
         expr = unwrap(parse_binary_expr(parser));
         array_add(*tuple_exprs, expr);
-        success, matches = match(parser, .COMMA);
+        success, matches = match(.COMMA);
     }
 
     tuple := Buck(Tuple);
@@ -401,27 +439,27 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
 }
 
 parse_binary_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result(parser);
+    result := start_result();
     expr := unwrap(parse_binary_expr(parser, 0));
     ret(expr);
 }
 
 // binary expressions, like a + b + c + d
 parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
-    result := start_result(parser);
+    result := start_result();
 
     expr := unwrap(parse_simple_expr(parser));
 
     // https://eli.thegreenplace.net/2012/08/02/parsing-expressions-by-precedence-climbing
     // This algorithm is supposed to be efficient. No idea if that's actually true,
     // but it is incredibly concise.
-    success, token := peek(parser);
+    success, token := peek();
     while success {
         is_op, info := binary_operator_info(token.kind);
         if !is_op || info.precedence < min_precedence {
             break;
         }
-        expect(parser);
+        expect();
 
         next_min_precedence := info.precedence;
         if info.is_left_to_right    next_min_precedence += 1;
@@ -436,7 +474,7 @@ parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
         new_expr.right = right;
         expr = new_expr;
 
-        success, token = peek(parser);
+        success, token = peek();
     }
 
     ret(expr);
@@ -444,16 +482,16 @@ parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
 
 // infix and postfix expressions, like chase a[1], a.b.c[13]
 parse_simple_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result(parser);
+    result := start_result();
     expr := unwrap(parse_atom(parser));
     ret(expr);
 }
 
 // Atoms like 12, begin, (12 + 13)
 parse_atom :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result(parser);
+    result := start_result();
 
-    success, matches := match(parser, .IDENT);
+    success, matches := match(.IDENT);
     if success {
         expr := Buck(Ident);
         expr.ident_symbol = matches[0].ident_symbol;
@@ -461,14 +499,14 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
         ret(expr);
     }
 
-    success, matches = match(parser, .LPAREN);
+    success, matches = match(.LPAREN);
     if success {
-        push_enclosing(parser, .PAREN);
-        eat_statement_separators(parser);
+        push_enclosing(.PAREN);
+        eat_statement_separators();
         paren_statements : [..] *Expr;
         defer array_free(paren_statements);
 
-        should_continue, token := peek(parser);
+        should_continue, token := peek();
         had_separator := true;
         while should_continue {
             if token.kind == .RPAREN {
@@ -500,14 +538,14 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
 
             unwrap(parse_statement_expr(parser, *paren_statements));
 
-            had_separator = eat_statement_separators(parser);
-            should_continue, token = peek(parser);
+            had_separator = eat_statement_separators();
+            should_continue, token = peek();
         }
 
         throw(*parser.tokens[parser.tokens.count - 1], "scope ended before closing ')'");
     }
 
-    token := expect_peek(parser);
+    token := expect_peek();
     throw(token, "didn't recognize token when parsing atom");
 }
 
@@ -636,6 +674,7 @@ binary_operator_info :: (kind: Token.Kind) -> bool, BinaryExprInfo {
 unwrap :: (result: Result(void)) #expand {
     if !result.did_succeed {
         outer_result := `result;
+        outer_result.did_succeed = false;
         outer_result.begin = result.begin;
         outer_result.end = result.end;
         outer_result.error = result.error;
@@ -649,6 +688,7 @@ unwrap :: (result: Result(void)) #expand {
 unwrap :: (result: Result($T)) -> T #expand {
     if !result.did_succeed {
         outer_result := `result;
+        outer_result.did_succeed = false;
         outer_result.begin = result.begin;
         outer_result.end = result.end;
         outer_result.error = result.error;
@@ -661,7 +701,16 @@ unwrap :: (result: Result($T)) -> T #expand {
 }
 
 ret :: (expr: *Expr) #expand {
-    result := `result;
+    result : Result(*Expr) = `result;
+    expr.end = result.end;
+    expr.begin = result.begin;
+    result.value = expr;
+
+    `return result;
+}
+
+ret :: (expr: *Module) #expand {
+    result : Result(*Module) = `result;
     expr.end = result.end;
     expr.begin = result.begin;
     result.value = expr;
@@ -710,40 +759,46 @@ err :: (value: *$T/interface SpannedInterface, message: string) -> Result(*Expr)
     return result;
 }
 
-start_result :: (parser: *Parser) -> Result(*Expr) #expand {
-    result : Result(*Expr);
+start_result :: ($T : Type = *Expr) -> Result(T) #expand {
+    parser : void;
+    p := `parser;
+
+    result : Result(T);
     result.error = "internal error? result might not have been initialized";
 
-    if parser.enclosing == .PAREN {
-        while parser.cursor < parser.tokens.count {
-            token := *parser.tokens[parser.cursor];
+    if p.enclosing == .PAREN {
+        while p.cursor < p.tokens.count {
+            token := *p.tokens[p.cursor];
             if token.kind != .NEWLINE
                 break;
 
-            parser.cursor += 1;
+            p.cursor += 1;
         }
     }
 
     // @Cleanup Is this useful?
-    if parser.cursor >= parser.tokens.count {
-        result.begin = parser.tokens[parser.tokens.count - 1].end;
+    if p.cursor >= p.tokens.count {
+        result.begin = p.tokens[p.tokens.count - 1].end;
         result.end = result.begin;
         result.did_succeed = false;
         result.error = "got to the end of the file when we expected another token";
         `return result;
     }
 
-    result.begin = parser.tokens[parser.cursor].begin;
+    result.begin = p.tokens[p.cursor].begin;
     result.end = result.begin;
 
     return result;
 }
 
-peek :: (parser: *Parser, $extend_result := true) -> bool, *Token #expand {
-    while parser.cursor < parser.tokens.count {
-        token := *parser.tokens[parser.cursor];
-        if token.kind == .NEWLINE && parser.enclosing == .PAREN {
-            parser.cursor += 1;
+peek :: ($extend_result := true) -> bool, *Token #expand {
+    parser : void;
+    p := `parser;
+
+    while p.cursor < p.tokens.count {
+        token := *p.tokens[p.cursor];
+        if token.kind == .NEWLINE && p.enclosing == .PAREN {
+            p.cursor += 1;
             continue;
         }
 
@@ -756,12 +811,14 @@ peek :: (parser: *Parser, $extend_result := true) -> bool, *Token #expand {
     return false, null;
 }
 
-expect_peek :: (parser: *Parser,
-                message := "got to the end of the file when we expected another token") -> *Token #expand {
-    while parser.cursor < parser.tokens.count {
-        token := *parser.tokens[parser.cursor];
-        if token.kind == .NEWLINE && parser.enclosing == .PAREN {
-            parser.cursor += 1;
+expect_peek :: (message := "got to the end of the file when we expected another token") -> *Token #expand {
+    parser : void;
+    p := `parser;
+
+    while p.cursor < p.tokens.count {
+        token := *p.tokens[p.cursor];
+        if token.kind == .NEWLINE && p.enclosing == .PAREN {
+            p.cursor += 1;
             continue;
         }
 
@@ -770,7 +827,7 @@ expect_peek :: (parser: *Parser,
     }
 
     result := `result;
-    result.begin = parser.tokens[parser.tokens.count - 1].end;
+    result.begin = p.tokens[p.tokens.count - 1].end;
     result.end = result.begin;
     result.did_succeed = false;
     result.error = message;
@@ -778,11 +835,14 @@ expect_peek :: (parser: *Parser,
     `return result;
 }
 
-expect :: (parser: *Parser) -> *Token #expand {
-    while parser.cursor < parser.tokens.count {
-        token := *parser.tokens[parser.cursor];
-        parser.cursor += 1;
-        if token.kind == .NEWLINE && parser.enclosing == .PAREN {
+expect :: () -> *Token #expand {
+    parser : void;
+    p := `parser;
+
+    while p.cursor < p.tokens.count {
+        token := *p.tokens[p.cursor];
+        p.cursor += 1;
+        if token.kind == .NEWLINE && p.enclosing == .PAREN {
             continue;
         }
 
@@ -791,7 +851,7 @@ expect :: (parser: *Parser) -> *Token #expand {
     }
 
     result := `result;
-    result.begin = parser.tokens[parser.tokens.count - 1].end;
+    result.begin = p.tokens[p.tokens.count - 1].end;
     result.end = result.begin;
     result.did_succeed = false;
     result.error = "got to the end of the file when we expected another token";
@@ -800,19 +860,22 @@ expect :: (parser: *Parser) -> *Token #expand {
     `return result;
 }
 
-expect_match :: (parser: *Parser, to_match: .. Token.Kind) -> [] Token #expand {
+expect_match :: (to_match: .. Token.Kind) -> [] Token #expand {
+    parser : void;
+    p := `parser;
+
     assert(to_match.count > 0);
     tokens: [] Token;
 
     match_cursor := 0;
-    cursor := parser.cursor;
-    while cursor < parser.tokens.count {
+    cursor := p.cursor;
+    while cursor < p.tokens.count {
         match_kind := to_match[match_cursor];
-        token := *parser.tokens[cursor];
+        token := *p.tokens[cursor];
         cursor += 1;
 
         if match_kind != token.kind {
-            if token.kind == .NEWLINE && parser.enclosing == .PAREN
+            if token.kind == .NEWLINE && p.enclosing == .PAREN
                 continue;
 
             result := `result;
@@ -827,17 +890,17 @@ expect_match :: (parser: *Parser, to_match: .. Token.Kind) -> [] Token #expand {
         match_cursor += 1;
 
         if match_cursor == to_match.count {
-            tokens.data = *parser.tokens[parser.cursor];
+            tokens.data = *p.tokens[p.cursor];
             tokens.count = to_match.count;
 
-            parser.cursor = cursor;
-            `result.end = parser.tokens[parser.cursor - 1].end;
+            p.cursor = cursor;
+            `result.end = p.tokens[p.cursor - 1].end;
             return tokens;
         }
     }
 
     result := `result;
-    result.begin = parser.tokens[parser.tokens.count - 1].end;
+    result.begin = p.tokens[p.tokens.count - 1].end;
     result.end = result.begin;
     result.did_succeed = false;
     result.error = "expected to find match to tokens";
@@ -845,21 +908,27 @@ expect_match :: (parser: *Parser, to_match: .. Token.Kind) -> [] Token #expand {
     `return result;
 }
 
-push_enclosing :: (parser: *Parser, enclosing: Parser.Enclosing) #expand {
-    previous := parser.enclosing;
-    parser.enclosing = enclosing;
-    `defer parser.enclosing = previous;
+push_enclosing :: (enclosing: Parser.Enclosing) #expand {
+    parser : void;
+    p := `parser;
+
+    previous := p.enclosing;
+    p.enclosing = enclosing;
+    `defer p.enclosing = previous;
 }
 
-finalize_statement :: (parser: *Parser) -> bool #expand {
+finalize_statement :: () -> bool #expand {
+    parser : void;
+    p := `parser;
+
     finalized := false;
     token : *Token;
 
-    while parser.cursor < parser.tokens.count {
-        token = *parser.tokens[parser.cursor];
+    while p.cursor < p.tokens.count {
+        token = *p.tokens[p.cursor];
         if token.kind == .NEWLINE {
             finalized = true;
-            parser.cursor += 1;
+            p.cursor += 1;
             continue;
         }
 
@@ -868,24 +937,24 @@ finalize_statement :: (parser: *Parser) -> bool #expand {
     if !success     return;
 
     if token_would_end_scope(parser, token.kind) {
-        parser.cursor += 1;
+        p.cursor += 1;
         return false;
     }
 
     finalized := false;
-    if parser.enclosing == {
+    if p.enclosing == {
     case .NONE; #through;
     case .BRACE;
         finalized = (token.kind == .NEWLINE);
     }
 
     if finalized {
-        parser.cursor += 1;
+        p.cursor += 1;
         return true;
     }
 
     result := `result;
-    last := parser.tokens[parser.tokens.count - 1];
+    last := p.tokens[p.tokens.count - 1];
     result.begin = last.begin;
     result.end = last.end;
     result.did_succeed = false;
@@ -894,19 +963,22 @@ finalize_statement :: (parser: *Parser) -> bool #expand {
     `return result;
 }
 
-match :: (parser: *Parser, to_match: .. Token.Kind) -> bool, [] Token #expand {
+match :: (to_match: .. Token.Kind) -> bool, [] Token #expand {
+    parser : void;
+    p := `parser;
+
     assert(to_match.count > 0);
     tokens: [] Token;
 
     match_cursor := 0;
-    cursor := parser.cursor;
-    while cursor < parser.tokens.count {
+    cursor := p.cursor;
+    while cursor < p.tokens.count {
         match_kind := to_match[match_cursor];
-        token := *parser.tokens[cursor];
+        token := *p.tokens[cursor];
         cursor += 1;
 
         if match_kind != token.kind {
-            if token.kind == .NEWLINE && parser.enclosing == .PAREN
+            if token.kind == .NEWLINE && p.enclosing == .PAREN
                 continue;
 
             return false, tokens;
@@ -915,11 +987,11 @@ match :: (parser: *Parser, to_match: .. Token.Kind) -> bool, [] Token #expand {
         match_cursor += 1;
 
         if match_cursor == to_match.count {
-            tokens.data = *parser.tokens[parser.cursor];
+            tokens.data = *p.tokens[p.cursor];
             tokens.count = to_match.count;
 
-            parser.cursor = cursor;
-            `result.end = parser.tokens[parser.cursor - 1].end;
+            p.cursor = cursor;
+            `result.end = p.tokens[p.cursor - 1].end;
             return true, tokens;
         }
     }
@@ -927,31 +999,37 @@ match :: (parser: *Parser, to_match: .. Token.Kind) -> bool, [] Token #expand {
     return false, tokens;
 }
 
-eat_newlines :: (parser: *Parser) -> bool #expand {
-    cursor := parser.cursor;
+eat_newlines :: () -> bool #expand {
+    parser : void;
+    p := `parser;
+
+    cursor := p.cursor;
     end := `result.end;
-    while parser.cursor < parser.tokens.count {
-        token := *parser.tokens[parser.cursor];
+    while p.cursor < p.tokens.count {
+        token := *p.tokens[p.cursor];
         if token.kind != .NEWLINE       break;
 
         end = token.end;
-        parser.cursor += 1;
+        p.cursor += 1;
     }
 
     `result.end = end;
-    return parser.cursor != cursor;
+    return p.cursor != cursor;
 }
 
-eat_statement_separators :: (parser: *Parser, $extend_result := true) -> bool #expand {
+eat_statement_separators :: ($extend_result := true) -> bool #expand {
+    parser : void;
+    p := `parser;
+
     found_separator := false;
     #if extend_result {
     end := `result.end;
     }
-    while parser.cursor < parser.tokens.count {
-        token := *parser.tokens[parser.cursor];
+    while p.cursor < p.tokens.count {
+        token := *p.tokens[p.cursor];
         if token.kind == {
         case .NEWLINE;
-            if parser.enclosing != .PAREN
+            if p.enclosing != .PAREN
                 found_separator = true;
         case .SEMICOLON;
             found_separator = true;
@@ -962,11 +1040,27 @@ eat_statement_separators :: (parser: *Parser, $extend_result := true) -> bool #e
         #if extend_result {
         end = token.end;
         }
-        parser.cursor += 1;
+        p.cursor += 1;
     }
 
     #if extend_result {
     `result.end = end;
     }
     return found_separator;
+}
+
+Buck :: ($T: Type, $initialized := true) -> *T #expand {
+    parser : void;
+    p := `parser;
+
+    push_allocator(bucket_allocator, *p.buckets);
+    return New(T, initialized = initialized);
+}
+
+BuckArray :: (count: s64, $T: Type, $initialized := true) -> [] T #expand {
+    parser : void;
+    p := `parser;
+
+    push_allocator(bucket_allocator, *p.buckets);
+    return NewArray(count, T, initialized = initialized);
 }

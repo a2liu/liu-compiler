@@ -35,6 +35,10 @@ add_symbol :: (syms: *Symbols, ident: string) -> s32 {
     return sym;
 }
 
+GoneType :: struct {
+    type_id: s32 = -1;
+    pointer_count: u8 = 0;
+}
 
 Result :: struct(Value: Type, Error: Type = string, insert_fields := true) {
     #if insert_fields {
@@ -66,6 +70,20 @@ has_members :: ($T: Type, members: .. string) -> bool {
         if !member      return false;
         if member.type != type_info(s32)    return false;
     }
+
+    return true;
+}
+
+inherits_from :: ($ty: Type, $base: Type) -> bool {
+    ty_info := type_info(ty);
+    base_info := type_info(base);
+    if ty_info == base_info     return true;
+
+    if ty_info.type != .STRUCT    return false;
+    struct_info := cast(*Type_Info_Struct) ty_info;
+
+    if struct_info.members.count < 1            return false;
+    if struct_info.members[0].type != base_info      return false;
 
     return true;
 }

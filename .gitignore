@@ -5,4 +5,7 @@
 
 !/src
 !/libs
+
 !/repro
+/repro/*
+!/repro/*.jai

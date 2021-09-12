@@ -145,15 +145,15 @@ Token :: struct {
 }
 
 Lexer :: struct {
-    symbols : Symbols;
+    symbols : *Symbols;
     file_data : string;
     cursor : s32 = 0;
     line: s32 = 0;
     line_offset: s32 = 0;
 
-    make :: (text: string) -> Lexer {
+    make :: (text: string, symbols: *Symbols) -> Lexer {
         lexer : Lexer;
-        lexer.symbols = Symbols.make();
+        lexer.symbols = symbols;
         lexer.file_data = text;
 
         return lexer;
@@ -408,7 +408,7 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
         }
 
         result.kind = .IDENT;
-        result.ident_symbol = add_symbol(*lexer.symbols, ident_string);
+        result.ident_symbol = add_symbol(lexer.symbols, ident_string);
 
         return result;
     }

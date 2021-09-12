@@ -7,12 +7,18 @@ BucketList :: struct {
         next : *Bucket;
     }
 
-    allocator: Allocator;
-    allocator_data: *void;
+    allocator: Allocator = null;
+    allocator_data: *void = null;
     first: *Bucket = null;
-    next: *Bucket;
+    next: *Bucket = null;
 
     MIN_SIZE :: 64 * 1024 * 1024;
+
+    make :: (size: s64 = MIN_SIZE, allocator: Allocator = null, allocator_data: *void = null) -> BucketList {
+        buckets : BucketList;
+        init(*buckets, size, allocator, allocator_data);
+        return buckets;
+    }
 
     init :: (buckets: *BucketList, size: s64 = MIN_SIZE, allocator: Allocator = null,
              allocator_data: *void = null) {
@@ -36,12 +42,6 @@ BucketList :: struct {
         bucket.next = null;
         buckets.first = bucket;
         buckets.next = bucket;
-    }
-
-    make :: (size: s64 = MIN_SIZE, allocator: Allocator = null, allocator_data: *void = null) -> BucketList {
-        buckets : BucketList;
-        init(*buckets, size, allocator, allocator_data);
-        return buckets;
     }
 
     alloc :: (buckets: *BucketList, size: s64) -> *void {
@@ -91,8 +91,6 @@ BucketList :: struct {
     }
 }
 
-#add_context buckets : BucketList;
-
 bucket_allocator :: (mode: Allocator_Mode, size: s64, old_size: s64,
                      old_memory_pointer: *void, allocator_data: *void) -> *void {
     assert(mode == .ALLOCATE);
@@ -103,12 +101,3 @@ bucket_allocator :: (mode: Allocator_Mode, size: s64, old_size: s64,
     return BucketList.alloc(b, size);
 }
 
-Buck :: ($T: Type, $initialized := true) -> *T {
-    push_allocator(bucket_allocator, *context.buckets);
-    return New(T, initialized = initialized);
-}
-
-BuckArray :: (count: s64, $T: Type, $initialized := true) -> [] T {
-    push_allocator(bucket_allocator, *context.buckets);
-    return NewArray(count, T, initialized = initialized);
-}

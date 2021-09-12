@@ -1,3 +1,4 @@
+#import "gone";
 #import "Basic";
 #import "lexer";
 #import "parser";
@@ -13,31 +14,28 @@ albert_logger :: (message: string, data: *void, info: Log_Info) {
 
 main :: () {
     context.logger = albert_logger;
-    context.buckets = BucketList.make();
 
     lexer_init();
 
-    lexer := Lexer.make("build + asdf * fdsa");
-    parser := Parser.consume_lexer_and_make(*lexer);
+    symbols := Symbols.make();
+    program_text := "build + asdf * fdsa";
+    file_id : s32 = 0;
+    module_result := parse_file(*symbols, file_id, program_text);
+    if !module_result.did_succeed {
+        log("%", module_result.error);
+        exit(1);
+    }
+    module := module_result.value;
 
-    print("Tokens: ");
-    for parser.tokens
-        print("% ", it.kind);
-    print("\n\n");
-
-    for result: parser {
-        if result.did_succeed {
-            for result.value {
-                print("%", << it);
-            }
-            print("\n");
-        } else {
-            log("%", result.error);
+    for stmt: module.statements {
+        for stmt {
+            print("%", << it);
         }
+        print("\n");
     }
     print("\n");
+
+    typecheck_module(module);
 }
-
-
 
 #run main();

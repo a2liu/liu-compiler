@@ -1,5 +1,5 @@
 #import "Basic";
-Gone :: #import "gone";
+#import "gone";
 #import "parser";
 
 // Probably want this opcode stuff to mirror how basic blocks work. Since registers
@@ -7,17 +7,12 @@ Gone :: #import "gone";
 // less about things like branch opcodes.
 
 TCResult :: struct {
-    using _base : Gone.Result(*Opcode, string, insert_fields = false);
+    using _base : Result(*Opcode, string, insert_fields = false);
 }
 
 using enum s32 {
     S64 :: 1;
 };
-
-Type :: struct {
-    pointer_count: s32;
-    type_id: s32;
-}
 
 Variable :: struct {
     Flags :: enum_flags u8 {
@@ -28,7 +23,7 @@ Variable :: struct {
 
     flags : Flags = 0;
     variable_stack_offset : u32;
-    variable_type : Type;
+    variable_type : GoneType;
 }
 
 Opcode :: struct {
@@ -39,7 +34,7 @@ Opcode :: struct {
 
         SCRATCH_NOP;
 
-        ADD_S64;
+        ADD;
 
         LITERAL_S64;
     }
@@ -79,13 +74,52 @@ CallArg :: struct {
     register_definition : *~s32 Opcode;
 }
 
-FunctionBlocks :: struct {
-    blocks: [..] [..] u8;
+BasicBlock :: struct {
+    data : [..] u8;
+
+    make :: () -> BasicBlock {
+        block : BasicBlock;
+        array_reserve(*block.data, size_of(Opcode) * 100);
+        return block;
+    }
+}
+
+alloc_op :: (block: *BasicBlock, $T: Type) -> *T {
+    #assert(inherits_from(T, Opcode));
+
+    type_size := size_of(T);
+    array_reserve(*block.data, type_size);
+    memory_index := block.data.count;
+    block.data.count += type_size;
+    assert(block.data.count <= block.data.allocated);
+    memory : *void = *block.data[memory_index];
+
+    ini :: initializer_of(T);
+
+    #if ini {
+        inline ini(memory);
+    } else {
+        memset(memory, 0, size_of(T));
+    }
+
+    return cast(*T) memory;
 }
 
 TypeChecker :: struct {
+    ops : BasicBlock;
+
+    make :: () -> TypeChecker {
+        checker : TypeChecker;
+        checker.ops = BasicBlock.make();
+
+        return checker;
+    }
 }
 
 Scope :: struct {
+}
+
+typecheck_module :: (module: *Module) {
+    checker := TypeChecker.make();
 }
 
