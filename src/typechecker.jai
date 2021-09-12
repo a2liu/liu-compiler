@@ -6,7 +6,7 @@
 // only reference registers within the same basic block, we can maybe worry a little
 // less about things like branch opcodes.
 
-S64 : s32 : 1;
+S64_TYPE : s32 : 1;
 
 Variable :: struct {
     Flags :: enum_flags u8 {

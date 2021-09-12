@@ -29,7 +29,10 @@ compile :: (text: string) {
     file_id : s32 = 0;
     module_result := parse_file(*symbols, file_id, text);
     if !module_result.did_succeed {
-        log("%", module_result.error);
+        log("[%,%]: %", module_result.begin, module_result.end, module_result.error);
+        #if GONE_DEBUG {
+        print_stack_trace(*module_result.stack_trace[0]);
+        }
         exit(1);
     }
 

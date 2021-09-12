@@ -26,16 +26,6 @@ lexer_init :: () {
     map_add(*keywords, "bitor", .BIT_OR);
     map_add(*keywords, "bitxor", .BIT_XOR);
     map_add(*keywords, "bitand", .BIT_AND);
-
-    map_add(*keywords, "true", .TRUE_VALUE);
-    map_add(*keywords, "false", .FALSE_VALUE);
-    map_add(*keywords, "none", .NONE_VALUE);
-
-    map_add(*keywords, "string", .STRING_TYPE);
-    map_add(*keywords, "any", .ANY_TYPE);
-    map_add(*keywords, "void", .VOID_TYPE);
-    map_add(*keywords, "bool", .BOOL_TYPE);
-    map_add(*keywords, "s64", .S64_TYPE);
 }
 
 Token :: struct {

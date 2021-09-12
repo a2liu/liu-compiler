@@ -165,16 +165,16 @@ DotAccessExpr :: struct {
 DeclarationExpr :: struct {
     using _base : Expr;
     _base.kind = .DECLARATION;
-    type_declaration_nullable : *Expr;
-    value_nullable : *Expr;
+    type_declaration_nullable : *Expr = null;
+    value_nullable : *Expr = null;
     ident_symbol : s32;
 }
 
 DeclarationSplitExpr :: struct {
     using _base : Expr;
     _base.kind = .DECLARATION_SPLIT;
-    type_declaration_nullable : *Expr;
-    value_nullable : *Expr;
+    type_declaration_nullable : *Expr = null;
+    value_nullable : *Expr = null;
     ident_symbols : [] s32;
 }
 
@@ -197,6 +197,7 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
 
             if info == type_info(*Expr) {
                 node.expr = << cast(**Expr) it.value_pointer;
+                if node.expr == null    continue;
                 array_add(nodes, node);
             }
 
@@ -331,6 +332,8 @@ for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
                 it.begin = enclose_result.begin;
                 it.end = enclose_result.end;
                 it.error = enclose_result.error;
+                #if GONE_DEBUG      it.stack_trace = enclose_result.stack_trace;
+
                 break run_body;
             }
 
@@ -389,7 +392,34 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
     // simple declarations
     success, matches := match(.IDENT, .COLON);
     if success {
-        // @Todo
+        ident_symbol := matches[0].ident_symbol;
+        if match(.EQUAL_SIGN) {
+            expr := unwrap(parse_complete_expr(parser));
+
+            decl := Buck(DeclarationExpr);
+            decl.ident_symbol = ident_symbol;
+            decl.value_nullable = expr;
+
+            ret(decl);
+        }
+
+        ty_expr := unwrap(parse_complete_expr(parser));
+        if match(.EQUAL_SIGN) {
+            expr := unwrap(parse_complete_expr(parser));
+
+            decl := Buck(DeclarationExpr);
+            decl.ident_symbol = ident_symbol;
+            decl.type_declaration_nullable = ty_expr;
+            decl.value_nullable = expr;
+
+            ret(decl);
+        }
+
+        decl := Buck(DeclarationExpr);
+        decl.ident_symbol = ident_symbol;
+        decl.type_declaration_nullable = ty_expr;
+
+        ret(decl);
     }
 
     // its a non-declaration expresion of some kind
@@ -431,22 +461,23 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
         ret(block);
     }
 
-    expr := unwrap(parse_binary_expr(parser));
-    success, matches = match(.COMMA);
-    if !success         ret(expr);
-
     // tuples: a, b, c
     tuple_exprs : [..] *Expr;
-    array_add(*tuple_exprs, expr);
     defer array_free(tuple_exprs);
 
-    stops := Token.Kind.[.NEWLINE, .SEMICOLON, .EOF];
-
+    stops := Token.Kind.[.NEWLINE, .SEMICOLON, .EQUAL_SIGN, .COLON, .EOF];
     for enclosed(parser.enclosing, .COMMA, extra_stops = stops, consume_stop = false) {
         unwrap(it);
-        expr = unwrap(parse_binary_expr(parser));
+        expr := unwrap(parse_binary_expr(parser));
         array_add(*tuple_exprs, expr);
     }
+
+    if tuple_exprs.count == 0
+        throw(peek(), "idk man, i guess the statement ended prematurely?");
+
+
+    if tuple_exprs.count == 1
+        ret(tuple_exprs[0]);
 
     tuple := Buck(TupleExpr);
     tuple.members = BuckArray(tuple_exprs);
@@ -471,7 +502,7 @@ parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
     // but it is incredibly concise.
     token := peek();
     while true {
-        is_op, info := binary_operator_info(token.kind);
+        is_op, info := binary_operator_info(parser, token.kind);
         if !is_op || info.precedence < min_precedence {
             break;
         }
@@ -663,7 +694,7 @@ check_keyword_binary_operands :: ($self: Expr.Kind, left: *Expr, right: *Expr) -
     return result;
 }
 
-binary_operator_info :: (kind: Token.Kind) -> bool, BinaryExprInfo {
+binary_operator_info :: (parser: *Parser, kind: Token.Kind) -> bool, BinaryExprInfo {
     info : BinaryExprInfo;
 
     if kind == {
@@ -686,6 +717,8 @@ binary_operator_info :: (kind: Token.Kind) -> bool, BinaryExprInfo {
 
     // Simple assignment
     case .EQUAL_SIGN;
+        if !parser.enable_assign_binary_expr        return false, info;
+
         info.op_kind = .ASSIGN;
         info.precedence = 10;
         info.is_left_to_right = false;
@@ -755,6 +788,7 @@ unwrap :: (result: Result(void)) #expand {
         outer_result.begin = result.begin;
         outer_result.end = result.end;
         outer_result.error = result.error;
+        #if GONE_DEBUG      outer_result.stack_trace = result.stack_trace;
 
         `return outer_result;
     }
@@ -769,6 +803,7 @@ unwrap :: (result: Result($T)) -> T #expand {
         outer_result.begin = result.begin;
         outer_result.end = result.end;
         outer_result.error = result.error;
+        #if GONE_DEBUG      outer_result.stack_trace = result.stack_trace;
 
         `return outer_result;
     }
@@ -791,12 +826,16 @@ SpannedInterface :: struct {
     end: s32;
 }
 
-throw :: (value: *$T/interface SpannedInterface, message: string) #expand {
+throw :: (value: *$T/interface SpannedInterface, message: string, loc := #caller_location) #expand {
     result := `result;
     result.begin = value.begin;
     result.end = value.end;
     result.did_succeed = false;
     result.error = message;
+    #if GONE_DEBUG {
+        result.stack_trace = pack_stack_trace();
+        result.stack_trace[0].line_number = cast(u32) loc.line_number;
+    }
 
     `return result;
 }
@@ -925,18 +964,22 @@ Enclosed :: struct {
     enclosing : Token.Kind;
     consume_stop : bool;
     enable_assign_binary_expr : bool;
+    #if GONE_DEBUG {
+    location : Source_Code_Location;
+    }
 
     // @Todo consume_stop and extra_stops are only in here for the benefit of tuples.
     // maybe tuples just shouldn't use this code?
 }
 
-enclosed :: (enclosing: Token.Kind, separators: .. Token.Kind, extra_stops : [] Token.Kind = .[], consume_stop := true, enable_assign_binary_expr := false) -> Enclosed {
+enclosed :: (enclosing: Token.Kind, separators: .. Token.Kind, extra_stops : [] Token.Kind = .[], consume_stop := true, enable_assign_binary_expr := false, loc := #caller_location) -> Enclosed {
     iter : Enclosed;
     iter.enclosing = enclosing;
     iter.separators = separators;
     iter.extra_stops = extra_stops;
     iter.consume_stop = consume_stop;
     iter.enable_assign_binary_expr = enable_assign_binary_expr;
+    #if GONE_DEBUG      iter.location = loc;
 
     return iter;
 }
@@ -969,6 +1012,10 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
             it.end = token.end;
             it.did_succeed = false;
             it.error = "missing separator between end of previous expression and beginning of next one";
+            #if GONE_DEBUG {
+                it.stack_trace = pack_stack_trace();
+                it.stack_trace[0].line_number = cast(u32) iter.location.line_number;
+            }
         } else {
             it.did_succeed = true;
             it.begin = -1;
