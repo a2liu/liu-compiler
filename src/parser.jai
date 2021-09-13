@@ -46,7 +46,7 @@ Expr :: struct {
 
         // unary expression
         REF;
-        DEREF; // ptr[]
+        DEREF; // *ptr
         SUBSCRIPT;
         DOT_ACCESS;
         CALL;
@@ -527,7 +527,7 @@ parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
     ret(expr);
 }
 
-// infix and postfix expressions, like a[1][], a.b.c[13](12)
+// infix and postfix expressions, like *a[1], a.b.c[13](12)
 parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
     result := start_result();
 

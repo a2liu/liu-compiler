@@ -49,6 +49,9 @@ check_expr :: (expr: *Expr, scope: *Scope) -> Result(GoneType) {
         ret(VOID_TYPE);
 
     case .PLUS;
+
+    case .DECLARATION;
+
     }
     ret(VOID_TYPE);
 }

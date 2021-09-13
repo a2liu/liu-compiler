@@ -52,3 +52,44 @@ That'll probably be a thing with modules, but that's it.
 
 Sidestep the whole "prefix vs infix operator" thing by just having a `:` after control
 flow. Like in Python.
+
+
+### Big Ideas (Compiler/Language)
+- Small target set (maybe native + bytecode?)
+- bytecode debugger
+- Compiler internals are exposed to language
+- Definitely want a `#metaprogram` directive.
+- Context struct
+- Jai-like macros
+- Notes are either identifiers or `@(expr)`, where `expr` is an expression evaluated
+  in the note's scope at compile time.
+
+### Big Ideas (Libraries)
+The following extensions to the language hopefully can be done in the language itself:
+
+- calling convention stuff (? requires use-defined codegen)
+- Python module as a target (? requires user-defined codegen)
+- User-defined directives, defined in metaprogram before build starts (? might be hard to implement)
+- Stack frame stuff (? might need built-in parts)
+- Interfaces (? maybe better to keep in the language itself)
+- Pass utilies for writing compiler passes
+- Program visualization stuff
+- Serialization standard library stuff
+- Dynamic dispatch
+- Inheritance
+- Debugger + Debugging utils
+- Testing utils, test auto generators
+- Code transformations
+- Smart code diffing
+
+### Small Ideas (Compiler/Language)
+- `guard` and `check` that are like `if` except their block requires you to return,
+  and has no `else`. `guard` enters the block if the condition is false, `check` enters
+  if the condition is true.
+- Definitely want a way to insert code directly into enclosing block from a macro.
+- Owning pointer in the type system.
+- Allow notes in strategic places, so that people can implement interesting stuff if they want.
+- Make compiler restructure data to allow for weird padding stuff.
+- Overload dot operator like Swift, so it calls a function and passes the member
+  name as a string.
+
