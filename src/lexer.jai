@@ -319,6 +319,14 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
             return result;
         }
 
+        success, value := try_lex_number_literal(lexer);
+        if success {
+            result.kind = .INTEGER_LITERAL;
+            result.integer_value = value;
+            result.is_negative = true;
+            return result;
+        }
+
         result.kind = .MINUS;
         return result;
 
@@ -360,25 +368,9 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
         return lex_string_literal_after_quote(lexer, result);
     }
 
-    if #char "0" <= char && char <= #char "9" {
-        value : u64 = char - #char "0";
-
-        while true {
-            success, char := peek(lexer);
-            if char < #char "0" || #char "9" < char     break;
-            expect(lexer, "what the heck this shouldn't ever error");
-
-            new_value := value * 10 + (char - #char "0");
-            if new_value < value {
-                result.did_succeed = false;
-                result.error = "value was too big";
-
-                return result;
-            }
-
-            value = new_value;
-        }
-
+    value : u64 = ---;
+    success, value = lex_number_literal(lexer, char);
+    if success {
         result.kind = .INTEGER_LITERAL;
         result.integer_value = value;
         result.is_negative = false;
@@ -433,6 +425,67 @@ start_result :: (lexer: *Lexer, $type: Type) -> Result(type) {
     return result;
 }
 
+lex_number_literal :: (lexer: *Lexer, initial: u8) -> bool, u64 #expand {
+    if initial < #char "0" || #char "9" < initial     return false, 0;
+    value : u64 = initial - #char "0";
+
+    while true {
+        if lexer.cursor >= lexer.file_data.count {
+            `result.end = lexer.cursor;
+            return true, value;
+        }
+
+        char := lexer.file_data[lexer.cursor];
+        if char < #char "0" || #char "9" < char     break;
+        lexer.cursor += 1;
+
+        new_value := value * 10 + (char - #char "0");
+        if new_value < value {
+            result := `result;
+            result.did_succeed = false;
+            result.error = "value was too big";
+            result.end = lexer.cursor;
+
+            `return result;
+        }
+
+        value = new_value;
+    }
+
+    `result.end = lexer.cursor;
+    return true, value;
+}
+
+try_lex_number_literal :: (lexer: *Lexer) -> bool, u64 #expand {
+    value : u64 = 0;
+    found_one := false;
+    while true {
+        if lexer.cursor >= lexer.file_data.count {
+            `result.end = lexer.cursor;
+            return found_one, value;
+        }
+
+        char := lexer.file_data[lexer.cursor];
+        if char < #char "0" || #char "9" < char     break;
+        lexer.cursor += 1;
+
+        new_value := value * 10 + (char - #char "0");
+        if new_value < value {
+            result := `result;
+            result.did_succeed = false;
+            result.error = "value was too big";
+            result.end = lexer.cursor;
+
+            `return result;
+        }
+
+        value = new_value;
+        found_one = true;
+    }
+
+    `result.end = lexer.cursor;
+    return found_one, value;
+}
 
 lex_string_literal_after_quote_ :: (lexer: *Lexer, _result: Result(Token)) -> Result(Token) {
     result := _result;

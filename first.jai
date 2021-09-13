@@ -35,7 +35,7 @@ main :: () {
     }
     print("\n");
 
-    typecheck_module(module);
+    check_module(module);
 }
 
 #run main();

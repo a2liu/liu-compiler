@@ -64,6 +64,12 @@ GoneType :: struct {
     pointer_count: u8 = 0;
 }
 
+Spanned :: struct {
+    begin: s32;
+    end: s32;
+}
+
+
 Result :: struct(Value: Type, Error: Type = string, insert_fields := true) {
     #if insert_fields {
         #if #run type_info(Value).type == .STRUCT {

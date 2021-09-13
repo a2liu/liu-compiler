@@ -117,23 +117,22 @@ ParenExpr :: struct {
 }
 
 ModuleExpr :: struct {
-    using _base : Expr;
-    _base.kind = .MODULE;
+    using __base : BlockExpr;
+    __base.kind = .MODULE;
     file_id : s32;
-    statements : [] *Expr; // statements allocated right after module struct
 }
 
 CallExpr :: struct {
     using _base : Expr;
     _base.kind = .CALL;
-    callee: *Expr;
+    callee : *Expr;
     arguments : [] *Expr; // arguments allocated right after call struct
 }
 
 SubscriptExpr :: struct {
     using _base : Expr;
     _base.kind = .SUBSCRIPT;
-    callee: *Expr;
+    callee : *Expr;
     arguments : [] *Expr; // arguments allocated right after subscript struct
 }
 
@@ -296,6 +295,7 @@ Parser :: struct {
 
         while true {
             token := unwrap(lex_token(lexer));
+            print("%\n", token);
 
             array_add(*parser.tokens, token);
             if token.kind == .EOF
@@ -821,12 +821,7 @@ ret :: (expr: *Expr) #expand {
     `return result;
 }
 
-SpannedInterface :: struct {
-    begin: s32;
-    end: s32;
-}
-
-throw :: (value: *$T/interface SpannedInterface, message: string, loc := #caller_location) #expand {
+throw :: (value: *$T/interface Spanned, message: string, loc := #caller_location) #expand {
     result := `result;
     result.begin = value.begin;
     result.end = value.end;

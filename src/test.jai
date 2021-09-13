@@ -45,9 +45,9 @@ compile :: (text: string) {
     }
     print("\n");
 
-    result := typecheck_module(module);
+    result := check_module(module);
     if !result.did_succeed {
-        log("%", module_result.error);
+        log("%", result.error);
         exit(1);
     }
 }
