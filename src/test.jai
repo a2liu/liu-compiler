@@ -27,17 +27,17 @@ compile :: (text: string) {
 
     symbols := Symbols.make();
     file_id : s32 = 0;
-    module_result := parse_file(*symbols, file_id, text);
-    if !module_result.did_succeed {
-        log("[%,%]: %", module_result.begin, module_result.end, module_result.error);
+    file_result := parse_file(*symbols, file_id, text);
+    if !file_result.did_succeed {
+        log("[%,%]: %", file_result.begin, file_result.end, file_result.error);
         #if GONE_DEBUG {
-        print_stack_trace(*module_result.stack_trace[0]);
+        print_stack_trace(*file_result.stack_trace[0]);
         }
         exit(1);
     }
 
-    module := module_result.value;
-    for stmt: module.statements {
+    file := file_result.value;
+    for stmt: file.statements {
         for stmt {
             print("%", << it);
         }
@@ -45,7 +45,7 @@ compile :: (text: string) {
     }
     print("\n");
 
-    result := check_module(module);
+    result := check_file(file);
     if !result.did_succeed {
         log("%", result.error);
         exit(1);

@@ -85,8 +85,9 @@ BucketList :: struct {
 
         b := buckets.first;
         while b {
+            next := b.next;
             free(b);
-            b = b.next;
+            b = next;
         }
     }
 }

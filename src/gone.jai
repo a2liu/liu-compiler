@@ -70,8 +70,12 @@ CASED_VOID_TYPE :: #run cased(VOID_TYPE);
 CASED_S64_TYPE :: #run cased(S64_TYPE);
 
 GoneType :: struct {
-    type_id: s32 = 0;
-    pointer_count: u8 = 0;
+    type_id : s32 = 0;
+    pointer_count : u8 = 0;
+}
+
+Typed :: struct {
+    type : GoneType;
 }
 
 cased :: (gone_type: GoneType) -> s64 {
@@ -81,6 +85,11 @@ cased :: (gone_type: GoneType) -> s64 {
     out.ty.pointer_count = gone_type.pointer_count;
 
     return out.value;
+}
+
+set_type :: inline (value : *$T/interface Typed, ty: GoneType) {
+    value.type.type_id = ty.type_id;
+    value.type.pointer_count = ty.pointer_count;
 }
 
 operator == :: inline (left: GoneType, right: GoneType) -> bool {

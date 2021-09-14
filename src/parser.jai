@@ -5,11 +5,13 @@
 #import "utils";
 Math :: #import "Math";
 
+#add_context current_tree_buckets : *BucketList = null;
+
 Expr :: struct {
     Kind :: enum u8 {
         UNINITIALIZED :: 0;
 
-        MODULE;
+        FILE;
 
         // statement expression
         DECLARATION;
@@ -55,15 +57,17 @@ Expr :: struct {
         EMPTY_PAREN;
         PAREN;
         N64;
+
+        TYPE; // created during type checking
     }
 
     SyntaxFlags :: enum_flags u8 {
-        COMPTIME;
+        COMPTIME_DECLARATION;
         PARENTHESIZED;
     }
 
     kind : Kind = .UNINITIALIZED;
-    flags : SyntaxFlags = 0;
+    syntax_flags : SyntaxFlags = 0;
     begin : s32;
     end : s32;
 
@@ -71,11 +75,11 @@ Expr :: struct {
     // TypeFlags :: enum_flags u16 {}
 
     type : GoneType = UNSPECIFIED_TYPE;
-    // #place type;
-    // do_not_used_s32 : s32 = ---;
-    // do_not_used_u8 : u8 = ---;
-    // padding_u8 : u8 = ---; // @Todo we can use these for flags
-    // padding_u16 : u16 = ---;
+    #place type;
+    do_not_used_s32 : s32 = ---;
+    do_not_used_u8 : u8 = ---;
+    padding_u8 : u8 = ---; // @Todo we can use these for flags
+    padding_u16 : u16 = ---;
 
     // These bois make sure that nothing fishy happens to GoneType, because we use its padding for data
     #assert(size_of(GoneType) == 8);
@@ -92,7 +96,7 @@ BinaryExpr :: struct {
 
 UnaryExpr :: struct {
     using _base : Expr;
-    base: *Expr;
+    base : *Expr;
 }
 
 TupleExpr :: struct {
@@ -113,10 +117,11 @@ ParenExpr :: struct {
     statements : [] *Expr; // statements allocated right after paren struct
 }
 
-ModuleExpr :: struct {
+FileExpr :: struct {
     using __base : BlockExpr;
-    __base.kind = .MODULE;
+    __base.kind = .FILE;
     file_id : s32;
+    buckets : BucketList;
 }
 
 CallExpr :: struct {
@@ -166,6 +171,12 @@ DeclarationSplitExpr :: struct {
     type_declaration_nullable : *Expr = null;
     value_nullable : *Expr = null;
     ident_symbols : [] s32;
+}
+
+TypeExpr :: struct {
+    using _base : Expr;
+    _base.kind = .TYPE;
+    value : GoneType;
 }
 
 // it_index is the level in the tree you're at
@@ -222,9 +233,9 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
         case .UNINITIALIZED;
             assert(false, "found uninitialized node");
 
-        case .MODULE;
-            module := cast(*ModuleExpr) it;
-            visit(module.statements);
+        case .FILE;
+            file := cast(*FileExpr) it;
+            visit(file.statements);
 
         case .BLOCK;
             block := cast(*BlockExpr) it;
@@ -286,7 +297,6 @@ Parser :: struct {
 
         while true {
             token := unwrap(lex_token(lexer));
-            print("%\n", token);
 
             array_add(*parser.tokens, token);
             if token.kind == .EOF
@@ -301,7 +311,7 @@ Parser :: struct {
     }
 
     free :: (parser: *Parser) {
-        array_reset(*parser.tokens);
+        array_free(parser.tokens);
     }
 }
 
@@ -348,13 +358,13 @@ for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
     }
 }
 
-parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*ModuleExpr) {
+parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*FileExpr) {
     lexer := Lexer.make(file_data, symbols);
-    result : Result(*ModuleExpr);
+    result : Result(*FileExpr);
     parser := *unwrap(Parser.consume_lexer_and_make(*lexer));
     defer Parser.free(parser);
 
-    result = start_result(*ModuleExpr);
+    result = start_result(*FileExpr);
 
     file_statements : [..] *Expr;
     defer array_free(file_statements);
@@ -364,11 +374,12 @@ parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*Mo
         array_add(*file_statements, expr);
     }
 
-    module := Buck(ModuleExpr);
-    module.file_id = file_id;
-    module.statements = BuckArray(file_statements);
+    file := Buck(FileExpr);
+    file.file_id = file_id;
+    file.statements = BuckArray(file_statements);
+    file.buckets = parser.buckets;
 
-    result.value = module;
+    result.value = file;
     return result;
 }
 
@@ -634,7 +645,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
 
         if paren_statements.count == 1 {
             expr := paren_statements[0];
-            expr.flags = expr.flags | .PARENTHESIZED;
+            expr.syntax_flags = expr.syntax_flags | .PARENTHESIZED;
 
             ret(expr);
         }
@@ -676,10 +687,10 @@ check_keyword_binary_operands :: ($self: Expr.Kind, left: *Expr, right: *Expr) -
     result: Result(void);
     message := "To use keyword binary operands ('and', 'or', 'bitand', 'bitor', 'bitxor') with each other, you need to use parentheses";
 
-    if left.kind != self && is_keyword(left.kind) && !(left.flags & .PARENTHESIZED)
+    if left.kind != self && is_keyword(left.kind) && !(left.syntax_flags & .PARENTHESIZED)
         throw(left, message);
 
-    if right.kind != self && is_keyword(right.kind) && !(right.flags & .PARENTHESIZED)
+    if right.kind != self && is_keyword(right.kind) && !(right.syntax_flags & .PARENTHESIZED)
         throw(right, message);
 
     result.begin = -1;

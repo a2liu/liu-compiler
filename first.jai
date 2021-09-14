@@ -20,14 +20,14 @@ main :: () {
     symbols := Symbols.make();
     program_text := "build + asdf * fdsa";
     file_id : s32 = 0;
-    module_result := parse_file(*symbols, file_id, program_text);
-    if !module_result.did_succeed {
-        log("%", module_result.error);
+    file_result := parse_file(*symbols, file_id, program_text);
+    if !file_result.did_succeed {
+        log("%", file_result.error);
         exit(1);
     }
-    module := module_result.value;
+    file := file_result.value;
 
-    for stmt: module.statements {
+    for stmt: file.statements {
         for stmt {
             print("%", << it);
         }
@@ -35,7 +35,7 @@ main :: () {
     }
     print("\n");
 
-    check_module(module);
+    check_file(file);
 }
 
 #run main();

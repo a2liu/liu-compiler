@@ -8,25 +8,33 @@
 // less about things like branch opcodes.
 
 Scope :: struct {
-    comptime_values : Map(s32, *Expr);
-    runtime_values : Map(s32, *Expr);
+    comptime_variables : Map(s32, *Expr);
+    runtime_variables : Map(s32, *Expr);
 }
 
-check_module :: (module: *ModuleExpr) -> Result(void) {
-    assert(module.type == UNSPECIFIED_TYPE);
+
+check_file :: (file: *FileExpr) -> Result(void) {
+    if file.type != UNSPECIFIED_TYPE
+        ret();
+
+    assert(context.current_tree_buckets == null, "a file should not be inside another file");
+    context.current_tree_buckets = *file.buckets;
+    defer context.current_tree_buckets = null;
 
     global_scope : Scope;
-    unwrap(check_statements(module.statements, *global_scope), return_type = void);
+    unwrap(check_statements(file.statements, *global_scope), return_type = void);
+    set_type(file, VOID_TYPE);
     ret();
 }
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
-    if block.type != UNSPECIFIED_TYPE {
+    if block.type != UNSPECIFIED_TYPE
         ret();
-    }
 
     scope : Scope;
     unwrap(check_statements(block.statements, *scope), return_type = void);
+
+    set_type(block, VOID_TYPE);
     ret();
 }
 
@@ -39,34 +47,44 @@ check_statements :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
 }
 
 check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) -> Result(GoneType) {
-    print("Hullo\n");
+    if expr.type != UNSPECIFIED_TYPE
+        ret(expr, expr.type);
 
     if expr.kind == {
-    case .MODULE;
-        // @Todo eventually we should support this. Not now, but eventually.
-        assert(false, "modules within other expressions is currently unsupported.");
+    case .FILE;
+        assert(false, "files within other expressions doesn't make any sense.");
 
     case .BLOCK;
         block := cast(*BlockExpr) expr;
         unwrap(check_block(block, scope));
-        ret(VOID_TYPE);
+        ret(block, VOID_TYPE);
 
     case .N64;
         literal := cast(*N64Expr) expr;
+        ret(literal, N64_TYPE);
 
-        if cased(expected_type) == {
-        case CASED_UNSPECIFIED_TYPE;
-        }
-        ret(N64_TYPE);
+    case .IDENT;
+        // @Todo lmao this is totally wrong
+        ident := cast(*IdentExpr) expr;
+        ret(ident, N64_TYPE);
+
+    case .CALL;
+        // @Todo lmao this is totally wrong
+        call := cast(*CallExpr) expr;
+        ret(call, VOID_TYPE);
 
     case .PLUS;
+        // @Todo lmao this is totally wrong
+        plus := cast(*BinaryExpr) expr;
+        ret(plus, N64_TYPE);
 
     case .DECLARATION;
+        // @Todo the entire thing lmao
         decl := cast(*DeclarationExpr) expr;
 
         declared_type : GoneType;
         if decl.type_declaration_nullable {
-            declared_type := check_expr(decl.type_declaration_nullable, scope);
+            declared_type = check_expr(decl.type_declaration_nullable, scope);
         }
 
         value_type : GoneType;
@@ -74,9 +92,14 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
             value_type = check_expr(decl.value_nullable, scope, expected_type = declared_type);
         }
 
+        ret(decl, VOID_TYPE);
     }
 
-    ret(VOID_TYPE);
+    assert(false, "% expressions are unimplemented", expr.kind);
+    ret(expr, UNSPECIFIED_TYPE); // for control flow warnings
+}
+
+run_expr :: () {
 }
 
 #scope_file
@@ -90,11 +113,13 @@ ret :: () #expand {
     `return result;
 }
 
-ret :: (type: GoneType) #expand {
+ret :: (expr: *Expr, type: GoneType) #expand {
     result : Result(GoneType);
     result.did_succeed = true;
+    result.value = type;
     result.begin = -1;
     result.end = -1;
+    set_type(expr, type);
 
     `return result;
 }
