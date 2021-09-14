@@ -59,12 +59,15 @@ add_symbol :: (syms: *Symbols, ident: string) -> s32 {
     return sym;
 }
 
-N64_TYPE :: GoneType.{ type_id = -1, pointer_count = 0 };
+// @Todo maybe everything under 0 should be a type variable
+// UN_TYPE :: GoneType.{ type_id = -2, pointer_count = 0 };
+// SN_TYPE :: GoneType.{ type_id = -1, pointer_count = 0 };
 UNSPECIFIED_TYPE :: GoneType.{ type_id = 0, pointer_count = 0 };
 VOID_TYPE :: GoneType.{ type_id = 1, pointer_count = 0 };
 S64_TYPE :: GoneType.{ type_id = 2, pointer_count = 0 };
 
-CASED_N64_TYPE :: #run cased(N64_TYPE);
+// CASED_UN_TYPE :: #run cased(UN_TYPE);
+// CASED_SN_TYPE :: #run cased(SN_TYPE);
 CASED_UNSPECIFIED_TYPE :: #run cased(UNSPECIFIED_TYPE);
 CASED_VOID_TYPE :: #run cased(VOID_TYPE);
 CASED_S64_TYPE :: #run cased(S64_TYPE);

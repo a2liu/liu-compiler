@@ -54,7 +54,7 @@ Expr :: struct {
         IDENT;
         EMPTY_PAREN;
         PAREN;
-        N64;
+        INTEGER;
 
         TYPE; // created during type checking
     }
@@ -142,9 +142,9 @@ IdentExpr :: struct {
     ident_symbol : s32;
 }
 
-N64Expr :: struct {
+IntegerExpr :: struct {
     using _base : Expr;
-    _base.kind = .N64;
+    _base.kind = .INTEGER;
     value : s64;
 }
 
@@ -606,7 +606,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             if value - 1 > cast(u64) Math.S64_MAX
                 throw(token, "value is too large for s64!");
 
-            expr := Buck(N64Expr);
+            expr := Buck(IntegerExpr);
             expr.value = cast,trunc(s64) (value - 1);
             expr.value *= -1;
             expr.value -= 1;
@@ -619,7 +619,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             throw(token, "value is too large for s64!");
         }
 
-        expr := Buck(N64Expr);
+        expr := Buck(IntegerExpr);
         expr.value = cast,trunc(s64) value;
 
         ret(expr);

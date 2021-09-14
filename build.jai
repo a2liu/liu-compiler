@@ -114,26 +114,43 @@ is_initial_file :: (loc := #caller_location) -> bool {
     set_build_options(options);
 
     w, out_options, import_path := init_build("Output Executable");
+    user, system := compiler_get_command_line_arguments();
+
+    mode : enum { EXE; TEST; } = .EXE;
+
+    for user {
+        if it == "test" {
+            mode = .TEST;
+        }
+    }
 
     out_options.output_path = join(#filepath, ".build/");
-    out_options.output_executable_name = "gone";
-    out_options.output_type = .EXECUTABLE;
-    out_options.import_path = import_path;
     out_options.array_bounds_check = .ALWAYS;
     out_options.cast_bounds_check = .FATAL;
     out_options.math_bounds_check = .FATAL;
+    out_options.import_path = import_path;
+
+    if mode == {
+    case .EXE;
+        out_options.output_executable_name = "gone";
+        out_options.output_type = .EXECUTABLE;
+    case .TEST;
+        out_options.output_type = .NO_OUTPUT;
+    }
 
     set_build_options(out_options, w);
-
     compiler_begin_intercept(w);
-    // dispatch := Dispatch.make(w);
-    add_build_file("first.jai", w);
+
+    if mode == {
+    case .EXE;
+        add_build_string("Main :: #import \"main\";\nmain :: () { Main.run(); }\n", w);
+    case .TEST;
+        add_build_string("Main :: #import \"main\";\n#run Main.test();\n", w);
+    }
 
     while true {
         message := compiler_wait_for_message();
         if !message break;
-
-        // Dispatch.message_handler(*dispatch, message);
 
         if message.kind == {
         case .COMPLETE;

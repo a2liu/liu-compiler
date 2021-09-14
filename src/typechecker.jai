@@ -8,8 +8,13 @@
 // less about things like branch opcodes.
 
 Scope :: struct {
-    comptime_variables : Map(s32, *Expr);
-    runtime_variables : Map(s32, *Expr);
+    DeclInfo :: struct {
+        decl : *DeclarationExpr;
+        index : s32;
+    }
+
+    comptime_variables : Map(s32, DeclInfo);
+    runtime_variables : Map(s32, DeclInfo);
 }
 
 
@@ -59,14 +64,14 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         unwrap(check_block(block, scope));
         ret(block);
 
-    case .N64;
-        literal := cast(*N64Expr) expr;
-        ret(literal, N64_TYPE);
+    case .INTEGER;
+        literal := cast(*IntegerExpr) expr;
+        ret(literal, S64_TYPE);
 
     case .IDENT;
         // @Todo lmao this is totally wrong
         ident := cast(*IdentExpr) expr;
-        ret(ident, N64_TYPE);
+        ret(ident, S64_TYPE);
 
     case .CALL;
         // @Todo lmao this is totally wrong
@@ -76,7 +81,13 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     case .PLUS;
         // @Todo lmao this is totally wrong
         plus := cast(*BinaryExpr) expr;
-        ret(plus, N64_TYPE);
+        left_ty := unwrap(check_expr(plus.left, scope));
+        right_ty := unwrap(check_expr(plus.right, scope));
+        if left_ty != right_ty {
+            throw(plus, "added two values that aren't the same type");
+        }
+
+        ret(plus, S64_TYPE);
 
     case .DECLARATION;
         // @Todo the entire thing lmao
