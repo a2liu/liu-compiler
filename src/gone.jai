@@ -59,9 +59,32 @@ add_symbol :: (syms: *Symbols, ident: string) -> s32 {
     return sym;
 }
 
+N64_TYPE :: GoneType.{ type_id = -1, pointer_count = 0 };
+UNSPECIFIED_TYPE :: GoneType.{ type_id = 0, pointer_count = 0 };
+VOID_TYPE :: GoneType.{ type_id = 1, pointer_count = 0 };
+S64_TYPE :: GoneType.{ type_id = 2, pointer_count = 0 };
+
+CASED_N64_TYPE :: #run cased(N64_TYPE);
+CASED_UNSPECIFIED_TYPE :: #run cased(UNSPECIFIED_TYPE);
+CASED_VOID_TYPE :: #run cased(VOID_TYPE);
+CASED_S64_TYPE :: #run cased(S64_TYPE);
+
 GoneType :: struct {
-    type_id: s32 = -1;
+    type_id: s32 = 0;
     pointer_count: u8 = 0;
+}
+
+cased :: (gone_type: GoneType) -> s64 {
+    out : union { ty: GoneType; value: s64; } = ---;
+    out.value = 0;
+    out.ty.type_id = gone_type.type_id;
+    out.ty.pointer_count = gone_type.pointer_count;
+
+    return out.value;
+}
+
+operator == :: inline (left: GoneType, right: GoneType) -> bool {
+    return (left.type_id == right.type_id) | (left.pointer_count == right.pointer_count);
 }
 
 Spanned :: struct {
@@ -117,4 +140,16 @@ inherits_from :: ($ty: Type, $base: Type) -> bool {
     if struct_info.members[0].type != base_info      return false;
 
     return true;
+}
+
+has_field_at_index :: ($base: Type, $field: Type, $index: s64) -> bool {
+    ty_info := type_info(base);
+    field_info := type_info(field);
+
+    assert(ty_info.type == .STRUCT);
+    if index < ty_info.members.count {
+        return ty_info.members[index].type == field_info;
+    }
+
+    return false;
 }

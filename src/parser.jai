@@ -14,7 +14,6 @@ Expr :: struct {
         // statement expression
         DECLARATION;
         // 1 declaration => b := 13
-        // 3 declarations => a, b, c := 12, 13, 14
 
         DECLARATION_SPLIT; // a, b, c := match(parser)
 
@@ -55,8 +54,7 @@ Expr :: struct {
         IDENT;
         EMPTY_PAREN;
         PAREN;
-        S64;
-        U64;
+        N64;
     }
 
     SyntaxFlags :: enum_flags u8 {
@@ -72,19 +70,18 @@ Expr :: struct {
     // Flags for when the exprs become typed
     // TypeFlags :: enum_flags u16 {}
 
-    type : GoneType;
-    #place type;
-    do_not_used_s32 : s32;
-    do_not_used_u8 : u8;
-    padding_u8 : u8; // @Todo we can use these for flags
-    padding_u16 : u16;
+    type : GoneType = UNSPECIFIED_TYPE;
+    // #place type;
+    // do_not_used_s32 : s32 = ---;
+    // do_not_used_u8 : u8 = ---;
+    // padding_u8 : u8 = ---; // @Todo we can use these for flags
+    // padding_u16 : u16 = ---;
 
     // These bois make sure that nothing fishy happens to GoneType, because we use its padding for data
     #assert(size_of(GoneType) == 8);
     #assert(type_info(GoneType).members.count == 2);
-    #assert(type_info(type_of(GoneType.type_id)) == type_info(s32));
-    #assert(type_info(type_of(GoneType.pointer_count)) == type_info(u8));
-    #assert(type_info(GoneType).members[0].type == type_info(type_of(GoneType.type_id)));
+    #assert(has_field_at_index(GoneType, s32, 0));
+    #assert(has_field_at_index(GoneType, u8, 1));
 }
 
 BinaryExpr :: struct {
@@ -142,15 +139,9 @@ IdentExpr :: struct {
     ident_symbol : s32;
 }
 
-U64Expr :: struct {
+N64Expr :: struct {
     using _base : Expr;
-    _base.kind = .U64;
-    value : u64;
-}
-
-S64Expr :: struct {
-    using _base : Expr;
-    _base.kind = .S64;
+    _base.kind = .N64;
     value : s64;
 }
 
@@ -229,7 +220,7 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
         node.level += 1;
         if it.kind == { // @Todo add #complete to this
         case .UNINITIALIZED;
-            assert(false);
+            assert(false, "found uninitialized node");
 
         case .MODULE;
             module := cast(*ModuleExpr) it;
@@ -605,7 +596,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             if value - 1 > cast(u64) Math.S64_MAX
                 throw(token, "value is too large for s64!");
 
-            expr := Buck(S64Expr);
+            expr := Buck(N64Expr);
             expr.value = cast,trunc(s64) (value - 1);
             expr.value *= -1;
             expr.value -= 1;
@@ -613,10 +604,12 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             ret(expr);
         }
 
-        if value > cast(u64) Math.S64_MAX
+        if value > cast(u64) Math.S64_MAX {
+            // @Todo add u64 support
             throw(token, "value is too large for s64!");
+        }
 
-        expr := Buck(S64Expr);
+        expr := Buck(N64Expr);
         expr.value = cast,trunc(s64) value;
 
         ret(expr);

@@ -7,23 +7,24 @@
 // only reference registers within the same basic block, we can maybe worry a little
 // less about things like branch opcodes.
 
-VOID_TYPE_ID : s32 : 0;
-S64_TYPE_ID : s32 : 1;
-
-VOID_TYPE :: GoneType.{ type_id = VOID_TYPE_ID, pointer_count = 0 };
-
 Scope :: struct {
     comptime_values : Map(s32, *Expr);
     runtime_values : Map(s32, *Expr);
 }
 
 check_module :: (module: *ModuleExpr) -> Result(void) {
+    assert(module.type == UNSPECIFIED_TYPE);
+
     global_scope : Scope;
     unwrap(check_statements(module.statements, *global_scope), return_type = void);
     ret();
 }
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
+    if block.type != UNSPECIFIED_TYPE {
+        ret();
+    }
+
     scope : Scope;
     unwrap(check_statements(block.statements, *scope), return_type = void);
     ret();
@@ -37,7 +38,9 @@ check_statements :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
     ret();
 }
 
-check_expr :: (expr: *Expr, scope: *Scope) -> Result(GoneType) {
+check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) -> Result(GoneType) {
+    print("Hullo\n");
+
     if expr.kind == {
     case .MODULE;
         // @Todo eventually we should support this. Not now, but eventually.
@@ -48,11 +51,31 @@ check_expr :: (expr: *Expr, scope: *Scope) -> Result(GoneType) {
         unwrap(check_block(block, scope));
         ret(VOID_TYPE);
 
+    case .N64;
+        literal := cast(*N64Expr) expr;
+
+        if cased(expected_type) == {
+        case CASED_UNSPECIFIED_TYPE;
+        }
+        ret(N64_TYPE);
+
     case .PLUS;
 
     case .DECLARATION;
+        decl := cast(*DeclarationExpr) expr;
+
+        declared_type : GoneType;
+        if decl.type_declaration_nullable {
+            declared_type := check_expr(decl.type_declaration_nullable, scope);
+        }
+
+        value_type : GoneType;
+        if decl.value_nullable {
+            value_type = check_expr(decl.value_nullable, scope, expected_type = declared_type);
+        }
 
     }
+
     ret(VOID_TYPE);
 }
 
