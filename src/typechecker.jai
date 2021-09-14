@@ -48,7 +48,7 @@ check_statements :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
 
 check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) -> Result(GoneType) {
     if expr.type != UNSPECIFIED_TYPE
-        ret(expr, expr.type);
+        ret(expr);
 
     if expr.kind == {
     case .FILE;
@@ -57,7 +57,7 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     case .BLOCK;
         block := cast(*BlockExpr) expr;
         unwrap(check_block(block, scope));
-        ret(block, VOID_TYPE);
+        ret(block);
 
     case .N64;
         literal := cast(*N64Expr) expr;
@@ -99,7 +99,8 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     ret(expr, UNSPECIFIED_TYPE); // for control flow warnings
 }
 
-run_expr :: () {
+get_type_value :: (expr: *Expr) -> GoneType {
+    return VOID_TYPE;
 }
 
 #scope_file
@@ -107,6 +108,18 @@ run_expr :: () {
 ret :: () #expand {
     result : Result(void);
     result.did_succeed = true;
+    result.begin = -1;
+    result.end = -1;
+
+    `return result;
+}
+
+ret :: (expr: *Expr) #expand {
+    assert(expr.type != UNSPECIFIED_TYPE);
+
+    result : Result(GoneType);
+    result.did_succeed = true;
+    result.value = expr.type;
     result.begin = -1;
     result.end = -1;
 

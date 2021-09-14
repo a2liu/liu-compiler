@@ -15,9 +15,7 @@ Expr :: struct {
 
         // statement expression
         DECLARATION;
-        // 1 declaration => b := 13
-
-        DECLARATION_SPLIT; // a, b, c := match(parser)
+        // a, b, c := 12, 13, 14
 
         // complete expression
         BLOCK;
@@ -157,20 +155,18 @@ DotAccessExpr :: struct {
     base_object : *Expr;
 }
 
+DeclarationIdent :: struct {
+    symbol : s32;
+    begin : s32;
+    end : s32;
+}
+
 DeclarationExpr :: struct {
     using _base : Expr;
     _base.kind = .DECLARATION;
     type_declaration_nullable : *Expr = null;
     value_nullable : *Expr = null;
-    ident_symbol : s32;
-}
-
-DeclarationSplitExpr :: struct {
-    using _base : Expr;
-    _base.kind = .DECLARATION_SPLIT;
-    type_declaration_nullable : *Expr = null;
-    value_nullable : *Expr = null;
-    ident_symbols : [] s32;
+    ident_symbols : [] DeclarationIdent;
 }
 
 TypeExpr :: struct {
@@ -247,10 +243,6 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
 
         case .DECLARATION;
             decl := cast(*DeclarationExpr) it;
-            visit(decl.type_declaration_nullable, decl.value_nullable);
-
-        case .DECLARATION_SPLIT;
-            decl := cast(*DeclarationSplitExpr) it;
             visit(decl.type_declaration_nullable, decl.value_nullable);
 
         case .CALL;
@@ -394,12 +386,19 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
     // simple declarations
     success, matches := match(.IDENT, .COLON);
     if success {
-        ident_symbol := matches[0].ident_symbol;
+        ident_symbols : [..] DeclarationIdent;
+        defer array_free(ident_symbols);
+        ident : DeclarationIdent;
+        ident.symbol = matches[0].ident_symbol;
+        ident.begin = matches[0].begin;
+        ident.end = matches[0].end;
+        array_add(*ident_symbols, ident);
+
         if match(.EQUAL_SIGN) {
             expr := unwrap(parse_complete_expr(parser));
 
             decl := Buck(DeclarationExpr);
-            decl.ident_symbol = ident_symbol;
+            decl.ident_symbols = BuckArray(ident_symbols);
             decl.value_nullable = expr;
 
             ret(decl);
@@ -410,7 +409,7 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
             expr := unwrap(parse_complete_expr(parser));
 
             decl := Buck(DeclarationExpr);
-            decl.ident_symbol = ident_symbol;
+            decl.ident_symbols = BuckArray(ident_symbols);
             decl.type_declaration_nullable = ty_expr;
             decl.value_nullable = expr;
 
@@ -418,7 +417,7 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
         }
 
         decl := Buck(DeclarationExpr);
-        decl.ident_symbol = ident_symbol;
+        decl.ident_symbols = BuckArray(ident_symbols);
         decl.type_declaration_nullable = ty_expr;
 
         ret(decl);
