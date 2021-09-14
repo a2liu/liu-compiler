@@ -116,11 +116,14 @@ is_initial_file :: (loc := #caller_location) -> bool {
     w, out_options, import_path := init_build("Output Executable");
     user, system := compiler_get_command_line_arguments();
 
-    mode : enum { EXE; TEST; } = .EXE;
+    mode : enum { EXE; TEST; TEST_LIBS; } = .EXE;
 
     for user {
         if it == "test" {
             mode = .TEST;
+        }
+        if it == "libs" {
+            mode = .TEST_LIBS;
         }
     }
 
@@ -136,6 +139,8 @@ is_initial_file :: (loc := #caller_location) -> bool {
         out_options.output_type = .EXECUTABLE;
     case .TEST;
         out_options.output_type = .NO_OUTPUT;
+    case .TEST_LIBS;
+        out_options.output_type = .NO_OUTPUT;
     }
 
     set_build_options(out_options, w);
@@ -144,8 +149,30 @@ is_initial_file :: (loc := #caller_location) -> bool {
     if mode == {
     case .EXE;
         add_build_string("Main :: #import \"main\";\nmain :: () { Main.run(); }\n", w);
+
     case .TEST;
         add_build_string("Main :: #import \"main\";\n#run Main.test();\n", w);
+
+    case .TEST_LIBS;
+        libs_folder := join(#filepath, "libs");
+        defer free(libs_folder);
+
+        builder : String_Builder;
+        init_string_builder(*builder);
+        print_to_builder(*builder, "test :: () {\n");
+
+        for info : bfs_visit_files(libs_folder, recursive = false) {
+            _path, basename, _ext, _name := path_decomp(info.full_name);
+
+            import_line := tprint("    Mod%1 :: #import \"%1\";\n    Mod%1.test();\n", basename);
+            print_to_builder(*builder, import_line);
+        }
+        print_to_builder(*builder, "}\n#run test();\n");
+
+        str := builder_to_string(*builder);
+        print("%", str);
+        free_buffers(*builder);
+        add_build_string(str, w);
     }
 
     while true {
