@@ -9,15 +9,20 @@
 #import "typechecker";
 #import "files";
 
-run :: () {
+init :: () {
     context.logger = gone_logger;
     lexer_init();
+    typechecker_init();
+}
+
+run :: () {
+    init();
+
     compile(0, "hello : s64 = 12;");
 }
 
 test :: () {
-    context.logger = gone_logger;
-    lexer_init();
+    init();
 
     for f_info: bfs_visit_files("test", recursive = false) {
         text := read_entire_file(f_info.full_name);
@@ -29,16 +34,8 @@ test :: () {
 
 compile :: (file_id: s32, text: string) {
     symbols := Symbols.make();
-    file_result := parse_file(*symbols, file_id, text);
-    if !file_result.did_succeed {
-        log("[%,%]: %", file_result.begin, file_result.end, file_result.error);
-        #if GONE_DEBUG {
-        print_stack_trace(*file_result.stack_trace[0]);
-        }
-        exit(1);
-    }
+    file := assert_result(parse_file(*symbols, file_id, text));
 
-    file := file_result.value;
     for stmt: file.statements {
         for stmt {
             print("%", << it);
@@ -47,9 +44,24 @@ compile :: (file_id: s32, text: string) {
     }
     print("\n");
 
-    result := check_file(file);
-    if !result.did_succeed {
-        log("%", result.error);
-        exit(1);
-    }
+    assert_result(check_file(file));
+}
+
+assert_result :: (res: Result($T)) -> T {
+    if res.did_succeed
+        return res.value;
+
+    log("[%,%]: %", res.begin, res.end, res.error);
+    #if GONE_DEBUG { print_stack_trace(*res.stack_trace[0]); }
+    exit(1);
+    return res.value;
+}
+
+assert_result :: (res: Result(void)) {
+    if res.did_succeed
+        return;
+
+    log("[%,%]: %", res.begin, res.end, res.error);
+    #if GONE_DEBUG { print_stack_trace(*res.stack_trace[0]); }
+    exit(1);
 }

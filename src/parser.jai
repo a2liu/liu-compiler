@@ -5,86 +5,7 @@
 #import "utils";
 Math :: #import "Math";
 
-#add_context current_tree_buckets : *BucketList = null;
-
-Expr :: struct {
-    Kind :: enum u8 {
-        UNINITIALIZED :: 0;
-
-        FILE;
-
-        // statement expression
-        DECLARATION;
-        // a, b, c := 12, 13, 14
-
-        // complete expression
-        BLOCK;
-        TUPLE;
-
-        // binary expression
-        PLUS;
-        MINUS;
-        MULTIPLY;
-        DIVIDE;
-
-        ASSIGN;
-        NOT_EQUAL;
-        CHECK_EQUAL;
-        LESS_THAN;
-        LEQ_THAN;
-        GREATER_THAN;
-        GEQ_THAN;
-
-        OR;
-        AND;
-        NOT;
-        BIT_OR;
-        BIT_XOR;
-        BIT_AND;
-        BIT_NOT;
-
-        // unary expression
-        REF;
-        DEREF; // *ptr
-        SUBSCRIPT;
-        DOT_ACCESS;
-        CALL;
-
-        // atom
-        IDENT;
-        EMPTY_PAREN;
-        PAREN;
-        INTEGER;
-
-        TYPE; // created during type checking
-    }
-
-    SyntaxFlags :: enum_flags u8 {
-        COMPTIME_DECLARATION;
-        PARENTHESIZED;
-    }
-
-    kind : Kind = .UNINITIALIZED;
-    syntax_flags : SyntaxFlags = 0;
-    begin : s32;
-    end : s32;
-
-    // Flags for when the exprs become typed
-    // TypeFlags :: enum_flags u16 {}
-
-    type : GoneType = UNSPECIFIED_TYPE;
-    #place type;
-    do_not_used_s32 : s32 = ---;
-    do_not_used_u8 : u8 = ---;
-    padding_u8 : u8 = ---; // @Todo we can use these for flags
-    padding_u16 : u16 = ---;
-
-    // These bois make sure that nothing fishy happens to GoneType, because we use its padding for data
-    #assert(size_of(GoneType) == 8);
-    #assert(type_info(GoneType).members.count == 2);
-    #assert(has_field_at_index(GoneType, s32, 0));
-    #assert(has_field_at_index(GoneType, u8, 1));
-}
+#add_context current_tree : *FileExpr = null;
 
 BinaryExpr :: struct {
     using _base : Expr;
@@ -167,12 +88,6 @@ DeclarationExpr :: struct {
     type_declaration_nullable : *Expr = null;
     value_nullable : *Expr = null;
     ident_symbols : [] DeclarationIdent;
-}
-
-TypeExpr :: struct {
-    using _base : Expr;
-    _base.kind = .TYPE;
-    value : GoneType;
 }
 
 // it_index is the level in the tree you're at

@@ -53,6 +53,8 @@ That'll probably be a thing with modules, but that's it.
 Sidestep the whole "prefix vs infix operator" thing by just having a `:` after control
 flow. Like in Python.
 
+scopes contain information about polymorphic type variables, which get pushed onto
+the typechecker during checking. Or something, idk.
 
 ### Big Ideas (Compiler/Language)
 - Small target set (maybe native + bytecode?)

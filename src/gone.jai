@@ -65,20 +65,98 @@ add_symbol :: (syms: *Symbols, ident: string) -> s32 {
 UNSPECIFIED_TYPE :: GoneType.{ type_id = 0, pointer_count = 0 };
 VOID_TYPE :: GoneType.{ type_id = 1, pointer_count = 0 };
 S64_TYPE :: GoneType.{ type_id = 2, pointer_count = 0 };
+TYPE_TYPE :: GoneType.{ type_id = 3, pointer_count = 0 };
 
 // CASED_UN_TYPE :: #run cased(UN_TYPE);
 // CASED_SN_TYPE :: #run cased(SN_TYPE);
 CASED_UNSPECIFIED_TYPE :: #run cased(UNSPECIFIED_TYPE);
 CASED_VOID_TYPE :: #run cased(VOID_TYPE);
 CASED_S64_TYPE :: #run cased(S64_TYPE);
+CASED_TYPE_TYPE :: #run cased(TYPE_TYPE);
 
 GoneType :: struct {
     type_id : s32 = 0;
     pointer_count : u8 = 0;
 }
 
-Typed :: struct {
-    type : GoneType;
+Expr :: struct {
+    Kind :: enum u8 {
+        UNINITIALIZED :: 0;
+
+        FILE;
+
+        // statement expression
+        DECLARATION;
+        // a, b, c := 12, 13, 14
+
+        // complete expression
+        BLOCK;
+        TUPLE;
+
+        // binary expression
+        PLUS;
+        MINUS;
+        MULTIPLY;
+        DIVIDE;
+
+        ASSIGN;
+        NOT_EQUAL;
+        CHECK_EQUAL;
+        LESS_THAN;
+        LEQ_THAN;
+        GREATER_THAN;
+        GEQ_THAN;
+
+        OR;
+        AND;
+        NOT;
+        BIT_OR;
+        BIT_XOR;
+        BIT_AND;
+        BIT_NOT;
+
+        // unary expression
+        REF;
+        DEREF; // *ptr
+        SUBSCRIPT;
+        DOT_ACCESS;
+        CALL;
+
+        // atom
+        IDENT;
+        EMPTY_PAREN;
+        PAREN;
+        INTEGER;
+    }
+
+    SyntaxFlags :: enum_flags u8 {
+        COMPTIME_DECLARATION;
+        PARENTHESIZED;
+    }
+
+    kind : Kind = .UNINITIALIZED;
+    syntax_flags : SyntaxFlags = 0;
+    begin : s32;
+    end : s32;
+
+    // Flags for when the exprs become typed
+    TypeFlags :: enum_flags u16 {
+        IS_TYPED;
+        TYPE_SLOT_IS_VALUE;
+    }
+
+    type_slot : GoneType = UNSPECIFIED_TYPE;
+    #place type_slot;
+    do_not_used_s32 : s32 = ---;
+    do_not_used_u8 : u8 = ---;
+    padding_u8 : u8 = ---; // @Todo we can use these for flags
+    type_flags : TypeFlags = 0;
+
+    // These bois make sure that nothing fishy happens to GoneType, because we use its padding for data
+    #assert(size_of(GoneType) == 8);
+    #assert(type_info(GoneType).members.count == 2);
+    #assert(has_field_at_index(GoneType, s32, 0));
+    #assert(has_field_at_index(GoneType, u8, 1));
 }
 
 cased :: (gone_type: GoneType) -> s64 {
@@ -90,13 +168,8 @@ cased :: (gone_type: GoneType) -> s64 {
     return out.value;
 }
 
-set_type :: inline (value : *$T/interface Typed, ty: GoneType) {
-    value.type.type_id = ty.type_id;
-    value.type.pointer_count = ty.pointer_count;
-}
-
 operator == :: inline (left: GoneType, right: GoneType) -> bool {
-    return (left.type_id == right.type_id) | (left.pointer_count == right.pointer_count);
+    return (left.type_id == right.type_id) & (left.pointer_count == right.pointer_count);
 }
 
 Spanned :: struct {
@@ -110,8 +183,8 @@ Result :: struct(Value: Type, Error: Type = string, insert_fields := true) {
         #if #run type_info(Value).type == .STRUCT {
             using value: Value;
 
-            #if #run !has_members(Value, "begin")   begin: s32;
-            #if #run !has_members(Value, "end")  end: s32;
+            #if #run !has_member(Value, "begin", s32)   begin: s32;
+            #if #run !has_member(Value, "end", s32)  end: s32;
         } else {
             value: Value;
             begin: s32;
@@ -128,14 +201,12 @@ Result :: struct(Value: Type, Error: Type = string, insert_fields := true) {
     stack_trace : [] Stack_Trace_Node;
 }
 
-has_members :: ($T: Type, members: .. string) -> bool {
+has_member :: ($T: Type, member_name: string, $ty: Type) -> bool {
     info := type_info(T);
 
-    for member_name: members {
-        member := get_field(info, member_name);
-        if !member      return false;
-        if member.type != type_info(s32)    return false;
-    }
+    member := get_field(info, member_name);
+    if !member      return false;
+    if member.type != type_info(ty)    return false;
 
     return true;
 }

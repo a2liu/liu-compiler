@@ -264,7 +264,7 @@ test :: () {}
 
 #scope_file
 
-hashmap_hash :: (hasher: *$T, value: string) -> u32 {
+hashmap_hash :: (hasher: *$T, value: $Key) -> u32 {
     data : [] u8 = ---;
     data.data = value.data;
     data.count = value.count;
