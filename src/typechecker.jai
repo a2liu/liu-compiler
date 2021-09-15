@@ -153,7 +153,8 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         ret(call, VOID_TYPE);
 
     case .PLUS;
-        // @Todo lmao this is totally wrong
+        // @Todo this doesn't really scale, nor does it really check whether or
+        // not the given type can take this operator. IDK man we'll see i guess.
         plus := cast(*BinaryExpr) expr;
         unwrap(check_expr(plus.left, scope));
         unwrap(check_expr(plus.right, scope));
