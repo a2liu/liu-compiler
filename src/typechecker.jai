@@ -30,31 +30,51 @@ Scope :: struct {
 }
 
 check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
-    declared_type : GoneType;
+    declared_type : GoneType = UNSPECIFIED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
         unwrap(check_expr(type_decl, scope));
         declared_type = unwrap(as_type_expr(type_decl));
     }
 
-    value_type : GoneType;
-    if decl_node.value_nullable {
-        unwrap(check_expr(decl_node.value_nullable, scope, expected_type = declared_type));
-        value_type = type_of_expr(decl_node.value_nullable);
-    }
+    value_type : GoneType = UNSPECIFIED_TYPE;
+    value := decl_node.value_nullable;
+    assert(value != null); // @Todo this should probably be allowed
+    unwrap(check_expr(value, scope, expected_type = declared_type));
+    value_type = type_of_expr(value);
 
-    if decl_node.ident_symbols.count == 1 {
-        // @Todo add to the current scope my guy
-        ret(decl_node, VOID_TYPE);
-    }
+    assert(decl_node.ident_symbols.count == 1);
 
-    assert(false);
+    declared_type = unwrap(check_type_transition(decl_node, declared_type, value_type));
+    ident := *decl_node.ident_symbols[0];
+    value_ptr := table_find_pointer(scope.runtime_variables, ident.symbol);
+    if value_ptr
+        throw(decl_node, "redeclared identifier");
+
+    decl_info : DeclInfo;
+    decl_info.ident_nullable = ident;
+    decl_info.constant_value_nullable = null;
+    decl_info.type = declared_type;
+    table_add(*scope.runtime_variables, ident.symbol, decl_info);
 
     // for decl_node.ident_symbols {
     // }
 
     ret(decl_node, VOID_TYPE);
 }
+
+check_type_transition :: (node: *$T/Expr, target: GoneType, value_type: GoneType) -> Result(GoneType) {
+    assert(value_type != UNSPECIFIED_TYPE);
+
+    if target == value_type
+        return success(target);
+
+    if target == UNSPECIFIED_TYPE
+        return success(value_type);
+
+    return error(node, "type mismatch", success_type = GoneType);
+}
+
 
 type_of_expr :: (expr: *Expr) -> GoneType {
     if expr.type_flags & .TYPE_SLOT_IS_VALUE
@@ -135,13 +155,14 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     case .PLUS;
         // @Todo lmao this is totally wrong
         plus := cast(*BinaryExpr) expr;
-        left_ty := unwrap(check_expr(plus.left, scope));
-        right_ty := unwrap(check_expr(plus.right, scope));
-        if left_ty != right_ty {
-            throw(plus, "added two values that aren't the same type");
-        }
+        unwrap(check_expr(plus.left, scope));
+        unwrap(check_expr(plus.right, scope));
+        left_ty := type_of_expr(plus.left);
+        right_ty := type_of_expr(plus.right);
+        expr_type := unwrap(check_type_transition(plus.left, expected_type, left_ty));
+        expr_type = unwrap(check_type_transition(plus.left, expr_type, right_ty));
 
-        ret(plus, S64_TYPE);
+        ret(plus, expr_type);
 
     case .DECLARATION;
         // @Todo the entire thing lmao
