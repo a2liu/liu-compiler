@@ -2,9 +2,12 @@
 #import "parser";
 #import "gone";
 
-// Blocks can read registers from their guaranteed predecessors.
-// If a block has multiple predecessors, each predecessor that calls into that block
-// needs to pass the register values it uses.
+// Yeah so we're just gonna flagrantly copy LLVM IR for the most part. No SSA or whatever,
+// and block parameters instead of phi stuff. Blocks can read registers from their
+// guaranteed predecessors. If a block has multiple predecessors, each predecessor
+// that calls into that block needs to pass the register values it uses. We probably
+// also wanna include some data about higher level constructs in the IR, so we can
+// output some reasonably readable C code as a backend.
 
 Opcode :: struct {
     Kind :: enum u16 {
@@ -51,23 +54,37 @@ BasicBlock :: struct {
     }
 }
 
-
 for_expansion :: (iter: *BasicBlock, body: Code, flags: For_Flags) #expand {
-    if iter.first == null        return;
+    REVERSE :: (flags & .REVERSE) != 0;
+    #if REVERSE {
+    pointer := iter.last;
+    } else {
+    pointer := iter.first;
+    }
 
-    next_op :: (pointer: *Opcode) -> *Opcode { return pointer.next; }
-    prev_op :: (pointer: *Opcode) -> *Opcode { return pointer.next; }
+    `it : *Opcode = ---;
+    `it_index : void;
 
-    next := ifx (flags & .REVERSE) then prev_op else next_op;
-    pointer := ifx (flags & .REVERSE) then iter.last else iter.first;
-
-    while pointer {
-        `it := pointer;
-        `it_index : void;
+    for <=REVERSE op, _unused: pointer {
+        it = op;
 
         #insert body;
+    }
 
-        pointer = next(pointer);
+}
+
+for_expansion :: (iter: *Opcode, body: Code, flags: For_Flags) #expand {
+    `it := iter;
+    `it_index : void;
+
+    while it {
+        #insert body;
+
+        #if flags & .REVERSE {
+            it = it.previous;
+        } else {
+            it = it.next;
+        }
     }
 }
 
