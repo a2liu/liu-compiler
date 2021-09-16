@@ -1,11 +1,8 @@
 #import "Basic";
-#import "gone";
-#import "parser";
 #import "Hash_Table";
 
-// Probably want this opcode stuff to mirror how basic blocks work. Since registers
-// only reference registers within the same basic block, we can maybe worry a little
-// less about things like branch opcodes.
+#import "gone";
+#import "parser";
 
 // should probably include stuff about what file this came from
 DeclInfo :: struct {
@@ -75,8 +72,12 @@ check_type_transition :: (node: *$T/Expr, target: GoneType, value_type: GoneType
     return error(node, "type mismatch", success_type = GoneType);
 }
 
+is_typed :: (expr: *Expr) -> bool {
+    return ((expr.type_flags & .IS_TYPED) != 0) && (expr.type_slot != UNSPECIFIED_TYPE);
+}
 
 type_of_expr :: (expr: *Expr) -> GoneType {
+    assert(is_typed(expr));
     if expr.type_flags & .TYPE_SLOT_IS_VALUE
         return TYPE_TYPE;
 
@@ -84,31 +85,29 @@ type_of_expr :: (expr: *Expr) -> GoneType {
 }
 
 check_file :: (file: *FileExpr) -> Result(void) {
-    if type_of_expr(file) != UNSPECIFIED_TYPE
-        ret();
+    if is_typed(file)       ret();
 
     assert(context.current_tree == null, "a file should not be inside another file");
     context.current_tree = file;
     defer context.current_tree = null;
 
     global_scope := Scope.make();
-    unwrap(check_statements(file.statements, *global_scope));
+    unwrap(check_scope(file.statements, *global_scope));
     set_type(file, VOID_TYPE);
     ret();
 }
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
-    if type_of_expr(block) != UNSPECIFIED_TYPE
-        ret();
+    if is_typed(block)       ret();
 
     scope := Scope.make();
-    unwrap(check_statements(block.statements, *scope));
+    unwrap(check_scope(block.statements, *scope));
 
     set_type(block, VOID_TYPE);
     ret();
 }
 
-check_statements :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
+check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
     for stmt: stmts {
         unwrap(check_expr(stmt, scope));
     }
@@ -117,10 +116,12 @@ check_statements :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
 }
 
 check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) -> Result(void) {
-    if type_of_expr(expr) != UNSPECIFIED_TYPE
-        ret();
+    if is_typed(expr)       ret();
 
     if expr.kind == {
+    case .UNINITIALIZED;
+        assert(false);
+
     case .FILE;
         assert(false, "files within other expressions doesn't make any sense.");
 
@@ -152,7 +153,7 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         call := cast(*CallExpr) expr;
         ret(call, VOID_TYPE);
 
-    case .PLUS;
+    case .ADD;
         // @Todo this doesn't really scale, nor does it really check whether or
         // not the given type can take this operator. IDK man we'll see i guess.
         plus := cast(*BinaryExpr) expr;
@@ -308,7 +309,7 @@ unwrap :: (result: Result(void)) #expand {
 }
 
 set_type :: inline (value : *Expr, ty: GoneType) {
-    assert(type_of_expr(value) == UNSPECIFIED_TYPE);
+    assert(!is_typed(value));
     assert(ty != UNSPECIFIED_TYPE);
 
     value.type_slot.type_id = ty.type_id;
@@ -317,7 +318,7 @@ set_type :: inline (value : *Expr, ty: GoneType) {
 }
 
 set_type_as_value :: inline (value : *Expr, ty: GoneType) {
-    assert(type_of_expr(value) == UNSPECIFIED_TYPE);
+    assert(!is_typed(value));
     assert(ty != UNSPECIFIED_TYPE, "set null as type value %", ty);
 
     value.type_slot.type_id = ty.type_id;

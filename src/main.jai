@@ -1,13 +1,15 @@
 #import "Basic";
 #import "File";
+
+#import "files";
+
 #import "gone";
+#import "buckets";
 #import "lexer";
 #import "parser";
-#import "utils";
-#import "parser";
-#import "buckets";
 #import "typechecker";
-#import "files";
+#import "bytecode";
+#import "utils";
 
 init :: () {
     context.logger = gone_logger;
@@ -45,6 +47,11 @@ compile :: (file_id: s32, text: string) {
     print("\n");
 
     assert_result(check_file(file));
+
+    block := bytecode_file(file);
+    for block {
+        print("%\n", it);
+    }
 }
 
 assert_result :: (res: Result($T)) -> T {
