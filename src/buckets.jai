@@ -1,5 +1,6 @@
 #import "Basic";
 
+// Returned pointers always have an alignment of 8. This is all that this compiler needs.
 BucketList :: struct {
     Bucket :: struct {
         len : s64;
@@ -38,7 +39,7 @@ BucketList :: struct {
                            allocator_data = buckets.allocator_data, initialized = false);
         bucket := cast(*Bucket) memory.data;
         bucket.len = bucket_size;
-        bucket.idx = 0;
+        bucket.idx = align_cost(memory.data);
         bucket.next = null;
         buckets.first = bucket;
         buckets.next = bucket;
@@ -49,10 +50,12 @@ BucketList :: struct {
         assert(buckets.first != null, "BucketList must be initialized before using it");
         push_allocator(buckets.allocator, buckets.allocator_data);
 
+        alloc_size := align_up(size);
+
         b := buckets.next;
         while size + b.idx > b.len {
             if b.next == null {
-                new_size := max(b.len * 2, size);
+                new_size := max(b.len * 2, alloc_size);
                 memory := NewArray(size_of(Bucket) + new_size, u8, allocator = buckets.allocator,
                                    allocator_data = buckets.allocator_data, initialized = false);
                 if memory.data == null      return null;
@@ -60,7 +63,7 @@ BucketList :: struct {
                 b.next = cast(*Bucket) memory.data;
                 b = b.next;
                 b.len = new_size;
-                b.idx = 0;
+                b.idx = align_cost(memory.data);
                 b.next = null;
                 break;
             }
@@ -70,7 +73,7 @@ BucketList :: struct {
 
         base := cast(*u8) *b[1];
         slot := *base[b.idx];
-        b.idx += size;
+        b.idx += alloc_size;
         if b != buckets.next {
             buckets.next = b;
         }
@@ -102,3 +105,17 @@ bucket_allocator :: (mode: Allocator_Mode, size: s64, old_size: s64,
     return BucketList.alloc(b, size);
 }
 
+#scope_file
+
+align_up :: (value: s64) -> s64 {
+    misalignment := value - (value & (~7));
+    if misalignment == 0        return value;
+    return 8 - misalignment + value;
+}
+
+align_cost :: (ptr: *void) -> s64 {
+    value := cast(s64) ptr;
+    misalignment := value - (value & (~7));
+    if misalignment == 0        return 0;
+    return 8 - misalignment;
+}

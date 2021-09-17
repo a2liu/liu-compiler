@@ -101,6 +101,7 @@ Expr :: struct {
 
         // statement expression
         DECLARATION;
+        DECLARATION_IDENT;
         // a, b, c := 12, 13, 14
 
         // complete expression
@@ -235,10 +236,15 @@ SubscriptExpr :: struct {
     arguments : [] *Expr; // arguments allocated right after subscript struct
 }
 
+IdentExprBase :: struct {
+    using __base : Expr;
+    symbol : s32;
+}
+
 IdentExpr :: struct {
-    using _base : Expr;
+    using _base : IdentExprBase;
     _base.kind = .IDENT;
-    ident_symbol : s32;
+    references : *DeclarationIdent; // @Todo what if the reference is in a different file?
 }
 
 IntegerExpr :: struct {
@@ -254,10 +260,12 @@ DotAccessExpr :: struct {
     base_object : *Expr;
 }
 
+#assert(size_of(IdentExpr) == size_of(DeclarationIdent));
 DeclarationIdent :: struct {
-    symbol : s32;
-    begin : s32;
-    end : s32;
+    using _base : IdentExprBase;
+    _base.kind = .DECLARATION_IDENT;
+    bytecode_register : s32;
+    do_not_use_0 : s32;
 }
 
 DeclarationExpr :: struct {
@@ -265,7 +273,7 @@ DeclarationExpr :: struct {
     _base.kind = .DECLARATION;
     type_declaration_nullable : *Expr = null;
     value_nullable : *Expr = null;
-    ident_symbols : [] DeclarationIdent;
+    idents : [] DeclarationIdent;
 }
 
 // it_index is the level in the tree you're at

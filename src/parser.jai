@@ -116,19 +116,19 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
     // simple declarations
     success, matches := match(.IDENT, .COLON);
     if success {
-        ident_symbols : [..] DeclarationIdent;
-        defer array_free(ident_symbols);
+        idents : [..] DeclarationIdent;
+        defer array_free(idents);
         ident : DeclarationIdent;
         ident.symbol = matches[0].ident_symbol;
         ident.begin = matches[0].begin;
         ident.end = matches[0].end;
-        array_add(*ident_symbols, ident);
+        array_add(*idents, ident);
 
         if match(.EQUAL_SIGN) {
             expr := unwrap(parse_complete_expr(parser));
 
             decl := Buck(DeclarationExpr);
-            decl.ident_symbols = BuckArray(ident_symbols);
+            decl.idents = BuckArray(idents);
             decl.value_nullable = expr;
 
             ret(decl);
@@ -139,7 +139,7 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
             expr := unwrap(parse_complete_expr(parser));
 
             decl := Buck(DeclarationExpr);
-            decl.ident_symbols = BuckArray(ident_symbols);
+            decl.idents = BuckArray(idents);
             decl.type_declaration_nullable = ty_expr;
             decl.value_nullable = expr;
 
@@ -147,7 +147,7 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
         }
 
         decl := Buck(DeclarationExpr);
-        decl.ident_symbols = BuckArray(ident_symbols);
+        decl.idents = BuckArray(idents);
         decl.type_declaration_nullable = ty_expr;
 
         ret(decl);
@@ -322,7 +322,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
     success, matches := match(.IDENT);
     if success {
         expr := Buck(IdentExpr);
-        expr.ident_symbol = matches[0].ident_symbol;
+        expr.symbol = matches[0].ident_symbol;
 
         ret(expr);
     }

@@ -39,10 +39,10 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     unwrap(check_expr(value, scope, expected_type = declared_type));
     value_type = type_of_expr(value);
 
-    assert(decl_node.ident_symbols.count == 1);
+    assert(decl_node.idents.count == 1);
 
     declared_type = unwrap(check_type_transition(decl_node, declared_type, value_type));
-    ident := *decl_node.ident_symbols[0];
+    ident := *decl_node.idents[0];
     value_ptr := table_find_pointer(scope.runtime_variables, ident.symbol);
     if value_ptr
         throw(decl_node, "redeclared identifier");
@@ -53,7 +53,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     decl_info.type = declared_type;
     table_add(*scope.runtime_variables, ident.symbol, decl_info);
 
-    // for decl_node.ident_symbols {
+    // for decl_node.idents {
     // }
 
     ret(decl_node, VOID_TYPE);
@@ -123,7 +123,7 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 
     case .IDENT;
         ident := cast(*IdentExpr) expr;
-        success, decl_info := search_scope(scope, ident.ident_symbol);
+        success, decl_info := search_scope(scope, ident.symbol);
         if !success
             throw(ident, "unrecognized identifier");
 
