@@ -173,6 +173,18 @@ Expr :: struct {
     #assert(has_field_at_index(GoneType, u8, 1));
 }
 
+is_typed :: (expr: *Expr) -> bool {
+    return ((expr.type_flags & .IS_TYPED) != 0) && (expr.type_slot != UNSPECIFIED_TYPE);
+}
+
+type_of_expr :: (expr: *Expr) -> GoneType {
+    assert(is_typed(expr));
+    if expr.type_flags & .TYPE_SLOT_IS_VALUE
+        return TYPE_TYPE;
+
+    return success(expr.type_slot);
+}
+
 BinaryExpr :: struct {
     using _base : Expr;
     left : *Expr;
@@ -384,6 +396,42 @@ Result :: struct(Value: Type, Error: Type = string, insert_fields := true) {
     did_succeed: bool = true;
     error: Error;
     stack_trace : [] Stack_Trace_Node;
+}
+
+success :: () -> Result(void) {
+    result : Result(void);
+    result.did_succeed = true;
+    result.begin = -1;
+    result.end = -1;
+
+    return result;
+}
+
+success :: (value: $T) -> Result(T) {
+    result : Result(T);
+    result.did_succeed = true;
+    result.value = value;
+    result.begin = -1;
+    result.end = -1;
+
+    return result;
+}
+
+error :: (value: *$T/interface Spanned, message: string, loc := #caller_location, $success_type := void) -> Result(success_type) {
+    result : Result(success_type);
+    result.begin = value.begin;
+    result.end = value.end;
+    result.did_succeed = false;
+    result.error = message;
+    #if GONE_DEBUG && #run has_member(T, "stack_trace", [] Stack_Trace_Node) {
+        result.stack_trace = value.stack_trace;
+    } else #if GONE_DEBUG {
+        result.stack_trace = pack_stack_trace();
+        result.stack_trace[0] = result.stack_trace[1];
+        result.stack_trace[0].line_number = cast(u32) loc.line_number;
+    }
+
+    return result;
 }
 
 has_member :: ($T: Type, member_name: string, $ty: Type) -> bool {

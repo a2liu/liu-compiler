@@ -1,5 +1,4 @@
 #import "Basic";
-#import "parser";
 #import "gone";
 
 // Yeah so we're just gonna flagrantly copy LLVM IR for the most part. No SSA or whatever,
@@ -24,8 +23,8 @@ Opcode :: struct {
 
     // Opcodes might not be tightly packed.
     // This field contains the actual size of this opcode in memory.
-    next : *~s32 Opcode = ---;
-    previous : *~s32 Opcode = ---;
+    next : *~s32 Opcode = null;
+    previous : *~s32 Opcode = null;
 
     register_id : s32;
 }
@@ -44,8 +43,9 @@ BinaryOp :: struct {
 
 BasicBlock :: struct {
     bytes : [..] u8;
-    first: *Opcode = null;
-    last : *Opcode = null;
+    first: s32 = -1;
+    last : s32 = -1;
+    next_register : s32 = 0;
 
     make :: () -> BasicBlock {
         bb : BasicBlock;
@@ -55,17 +55,21 @@ BasicBlock :: struct {
 }
 
 for_expansion :: (iter: *BasicBlock, body: Code, flags: For_Flags) #expand {
+    if iter.last == -1      return;
+
     REVERSE :: (flags & .REVERSE) != 0;
     #if REVERSE {
-    pointer := iter.last;
+    index := iter.last;
     } else {
-    pointer := iter.first;
+    index := iter.first;
     }
 
+    pointer := index_to_op(iter, index);
     `it : *Opcode = ---;
     `it_index : void;
 
     for <=REVERSE op, _unused: pointer {
+        op_to_index(iter, op);
         it = op;
 
         #insert body;
@@ -107,7 +111,7 @@ bytecode_scope :: (bb: *BasicBlock, stmts: [] *Expr) {
     }
 }
 
-bytecode_expr :: (bb: *BasicBlock, expr: *Expr) {
+bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     if expr.kind == {
     case .UNINITIALIZED;
         assert(false);
@@ -119,15 +123,96 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) {
         block := cast(*BlockExpr) expr;
         bytecode_block(bb, block);
 
+    case .DECLARATION;
+        decl := cast(*DeclarationExpr) expr;
+        assert(decl.value_nullable != null);
+        bytecode_expr(bb, decl.value_nullable);
+
     case .ADD;
+        add := cast(*BinaryExpr) expr;
+        left := bytecode_expr(bb, add.left);
+        right := bytecode_expr(bb, add.right);
+        op := alloc_op(bb, BinaryOp, add);
+        op.kind = .ADD;
+        op.left = index_to_op(bb, left);
+        op.right = index_to_op(bb, right);
+        ret(bb, op);
+
+    case .INTEGER;
+        integer := cast(*IntegerExpr) expr;
+        assert(type_of_expr(integer) == S64_TYPE);
+        op := alloc_op(bb, LiteralS64Op, integer);
+        op.value = integer.value;
+        ret(bb, op);
     }
+
+    ret();
+}
+
+alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Spanned) -> *T {
+    #assert(inherits_from(T, Opcode));
+
+    output := bb_alloc(bb, T);
+    pointer : *Opcode = output;
+    relative_to_base := op_to_index(bb, pointer);
+
+    pointer.register_id = bb.next_register;
+    bb.next_register += 1;
+
+    pointer.span_begin = spanned.begin;
+    pointer.span_length = cast(u16) (spanned.end - spanned.begin);
+
+    pointer.next = null;
+
+
+    if bb.last >= 0 {
+        last := index_to_op(bb, bb.last);
+        last.next = pointer;
+        pointer.previous = last;
+        bb.last = relative_to_base;
+    } else {
+        assert(relative_to_base == 0);
+        pointer.previous = null;
+        bb.first = 0;
+        bb.last = 0;
+    }
+
+    assert(bb.last >= -1); // overflow happened probably
+    return output;
 }
 
 #scope_file
 
-alloc_array :: (bb: *BasicBlock, count: s64, $T: Type) -> [] T {
+ret :: () #expand {
+    `return -1;
+}
+
+ret :: (bb: *BasicBlock, op: *Opcode) #expand {
+    `return op_to_index(bb, op);
+}
+
+index_to_op :: (bb: *BasicBlock, idx: s32) -> *Opcode {
+    assert(idx >= -1);
+    if idx == -1 {
+        return null;
+    }
+
+    return cast(*Opcode) *bb.bytes[idx];
+}
+
+op_to_index :: (bb: *BasicBlock, op: *Opcode) -> s32 {
+    if op == null {
+        return -1;
+    }
+
+    index := cast(s32) ((cast(*u8) op) - bb.bytes.data);
+    assert(*bb.bytes[index] == cast(*u8) op);
+    return index;
+}
+
+bb_alloc_array :: (bb: *BasicBlock, count: s64, $T: Type) -> [] T {
     alloc_size := size_of(T) * count;
-    array_reserve(*bb.bytes, alloc_size);
+    array_reserve(*bb.bytes, bb.bytes.count + alloc_size);
     memory_index := bb.bytes.count;
     bb.bytes.count += alloc_size;
     assert(bb.bytes.count <= bb.bytes.allocated);
@@ -139,29 +224,11 @@ alloc_array :: (bb: *BasicBlock, count: s64, $T: Type) -> [] T {
     return array;
 }
 
-alloc :: (bb: *BasicBlock, $T: Type) -> *T {
-    pointer := alloc_array(bb, 1, T).data;
+bb_alloc :: (bb: *BasicBlock, $T: Type) -> *T {
+    pointer := bb_alloc_array(bb, 1, T).data;
 
     ini :: initializer_of(T);
     inline ini(pointer);
-
-    return pointer;
-}
-
-alloc_op :: (bb: *BasicBlock, $T: Type) -> *T {
-    #assert(inherits_from(T, Opcode));
-
-    pointer := alloc(bb, T);
-
-    pointer.next = null;
-    if block.last {
-        pointer.previous = bb.last;
-        bb.last = pointer;
-    } else {
-        pointer.previous = null;
-        bb.first = pointer;
-        bb.last = pointer;
-    }
 
     return pointer;
 }

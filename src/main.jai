@@ -49,9 +49,13 @@ compile :: (file_id: s32, text: string) {
     assert_result(check_file(file));
 
     block := bytecode_file(file);
+
+    print("basic block:\n");
     for block {
         print("%\n", it);
+        print("kind: %, next: %, prev: %\n", it.kind, it.next, it.previous);
     }
+    print("\n");
 }
 
 assert_result :: (res: Result($T)) -> T {

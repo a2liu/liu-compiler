@@ -2,7 +2,6 @@
 #import "Hash_Table";
 
 #import "gone";
-#import "parser";
 
 // should probably include stuff about what file this came from
 DeclInfo :: struct {
@@ -70,18 +69,6 @@ check_type_transition :: (node: *$T/Expr, target: GoneType, value_type: GoneType
         return success(value_type);
 
     return error(node, "type mismatch", success_type = GoneType);
-}
-
-is_typed :: (expr: *Expr) -> bool {
-    return ((expr.type_flags & .IS_TYPED) != 0) && (expr.type_slot != UNSPECIFIED_TYPE);
-}
-
-type_of_expr :: (expr: *Expr) -> GoneType {
-    assert(is_typed(expr));
-    if expr.type_flags & .TYPE_SLOT_IS_VALUE
-        return TYPE_TYPE;
-
-    return success(expr.type_slot);
 }
 
 check_file :: (file: *FileExpr) -> Result(void) {
@@ -234,42 +221,6 @@ search_scope :: (scope: *Scope, ident: s32, search_builtin := true) -> bool, Dec
     }
 
     return false, decl_info;
-}
-
-success :: () -> Result(void) {
-    result : Result(void);
-    result.did_succeed = true;
-    result.begin = -1;
-    result.end = -1;
-
-    return result;
-}
-
-success :: (value: $T) -> Result(T) {
-    result : Result(T);
-    result.did_succeed = true;
-    result.value = value;
-    result.begin = -1;
-    result.end = -1;
-
-    return result;
-}
-
-error :: (value: *$T/interface Spanned, message: string, loc := #caller_location, $success_type := void) -> Result(success_type) {
-    result : Result(success_type);
-    result.begin = value.begin;
-    result.end = value.end;
-    result.did_succeed = false;
-    result.error = message;
-    #if GONE_DEBUG && #run has_member(T, "stack_trace", [] Stack_Trace_Node) {
-        result.stack_trace = value.stack_trace;
-    } else #if GONE_DEBUG {
-        result.stack_trace = pack_stack_trace();
-        result.stack_trace[0] = result.stack_trace[1];
-        result.stack_trace[0].line_number = cast(u32) loc.line_number;
-    }
-
-    return result;
 }
 
 ret :: () #expand {
