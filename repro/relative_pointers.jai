@@ -1,7 +1,6 @@
 #import "Basic";
 
 Value :: struct {
-    kind: enum { BASE; BIG; } = .BASE;
     next : *~s32 Value;
 }
 
@@ -9,29 +8,14 @@ BigValue :: struct {
     using _base : Value;
 }
 
-BumpAlloc :: struct {
-    bytes : [] u8;
-    bump : s64;
-}
-
-bump_alloc :: (bump: *BumpAlloc, $T: Type) -> *T {
-    size := size_of(T);
-    pointer := *bump.bytes[bump.bump];
-    bump.bump += size;
-    ini :: initializer_of(T);
-    memset(pointer, 0, size);
-
-    return cast(*T) pointer;
-}
-
 #run main();
 main :: () {
-    bump : BumpAlloc;
-    bump.bytes = NewArray(1000, u8);
-    value1 := bump_alloc(*bump, Value);
-    value2 := bump_alloc(*bump, Value);
-    value1_big := bump_alloc(*bump, BigValue);
-    value2_big := bump_alloc(*bump, BigValue);
+    values := NewArray(4, BigValue);
+
+    value1 : *Value = *values[0];
+    value2 : *Value = *values[1];
+    value1_big := *values[2];
+    value2_big := *values[3];
     value1_next : *Value;
     value1_big_next : *Value;
 
