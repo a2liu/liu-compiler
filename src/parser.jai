@@ -1,13 +1,13 @@
 #import "Basic";
 Math :: #import "Math";
 
-#import "gone";
+#import "liu";
+Liu :: #import "liu";
 #import "buckets";
 #import "lexer";
 #import "utils";
 
 Parser :: struct {
-    buckets: BucketList;
     tokens : [..] Token;
     cursor : s64 = 0;
     enclosing : Token.Kind = .EOF;
@@ -25,7 +25,6 @@ Parser :: struct {
                 break;
         }
 
-        parser.buckets = BucketList.make();
         result.begin = -1;
         result.end = -1;
 
@@ -55,7 +54,7 @@ for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
                 it.begin = enclose_result.begin;
                 it.end = enclose_result.end;
                 it.error = enclose_result.error;
-                #if GONE_DEBUG      it.stack_trace = enclose_result.stack_trace;
+                #if LIU_DEBUG      it.stack_trace = enclose_result.stack_trace;
 
                 break run_body;
             }
@@ -86,6 +85,12 @@ parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*Fi
     parser := *unwrap(Parser.consume_lexer_and_make(*lexer));
     defer Parser.free(parser);
 
+    buckets := BucketList.make();
+    file := Liu.Buck(FileExpr, buckets = *buckets);
+    file.file_id = file_id;
+    file.buckets = buckets;
+    use_tree(file);
+
     result = start_result(*FileExpr);
 
     file_statements : [..] *Expr;
@@ -96,10 +101,7 @@ parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*Fi
         array_add(*file_statements, expr);
     }
 
-    file := Buck(FileExpr);
-    file.file_id = file_id;
     file.statements = BuckArray(file_statements);
-    file.buckets = parser.buckets;
 
     result.value = file;
     return result;
@@ -521,7 +523,7 @@ unwrap :: (result: Result(void)) #expand {
         outer_result.begin = result.begin;
         outer_result.end = result.end;
         outer_result.error = result.error;
-        #if GONE_DEBUG      outer_result.stack_trace = result.stack_trace;
+        #if LIU_DEBUG      outer_result.stack_trace = result.stack_trace;
 
         `return outer_result;
     }
@@ -536,7 +538,7 @@ unwrap :: (result: Result($T)) -> T #expand {
         outer_result.begin = result.begin;
         outer_result.end = result.end;
         outer_result.error = result.error;
-        #if GONE_DEBUG      outer_result.stack_trace = result.stack_trace;
+        #if LIU_DEBUG      outer_result.stack_trace = result.stack_trace;
 
         `return outer_result;
     }
@@ -560,7 +562,7 @@ throw :: (value: *$T/interface Spanned, message: string, loc := #caller_location
     result.end = value.end;
     result.did_succeed = false;
     result.error = message;
-    #if GONE_DEBUG {
+    #if LIU_DEBUG {
         result.stack_trace = pack_stack_trace();
         result.stack_trace[0].line_number = cast(u32) loc.line_number;
     }
@@ -692,7 +694,7 @@ Enclosed :: struct {
     enclosing : Token.Kind;
     consume_stop : bool;
     enable_assign_binary_expr : bool;
-    #if GONE_DEBUG {
+    #if LIU_DEBUG {
     location : Source_Code_Location;
     }
 
@@ -707,7 +709,7 @@ enclosed :: (enclosing: Token.Kind, separators: .. Token.Kind, extra_stops : [] 
     iter.extra_stops = extra_stops;
     iter.consume_stop = consume_stop;
     iter.enable_assign_binary_expr = enable_assign_binary_expr;
-    #if GONE_DEBUG      iter.location = loc;
+    #if LIU_DEBUG      iter.location = loc;
 
     return iter;
 }
@@ -740,7 +742,7 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
             it.end = token.end;
             it.did_succeed = false;
             it.error = "missing separator between end of previous expression and beginning of next one";
-            #if GONE_DEBUG {
+            #if LIU_DEBUG {
                 it.stack_trace = pack_stack_trace();
                 it.stack_trace[0].line_number = cast(u32) iter.location.line_number;
             }
@@ -778,23 +780,9 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
 }
 
 Buck :: ($T: Type) -> *T #expand {
-    parser : void;
-    p := `parser;
-
-    push_allocator(bucket_allocator, *p.buckets);
-    value := New(T, initialized = true);
-    value.end = `result.end;
-    value.begin = `result.begin;
-
-    return value;
+    expr := Liu.Buck(T);
+    expr.begin = `result.begin;
+    expr.end = `result.end;
+    return expr;
 }
 
-BuckArray :: (array: [] $T) -> [] T #expand {
-    parser : void;
-    p := `parser;
-
-    push_allocator(bucket_allocator, *p.buckets);
-    out : [] T = NewArray(array.count, T, initialized = false);
-    memcpy(out.data, array.data, array.count * size_of(T));
-    return out;
-}

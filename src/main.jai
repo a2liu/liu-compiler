@@ -3,7 +3,7 @@
 
 #import "files";
 
-#import "gone";
+#import "liu";
 #import "buckets";
 #import "lexer";
 #import "parser";
@@ -12,7 +12,7 @@
 #import "utils";
 
 init :: () {
-    context.logger = gone_logger;
+    context.logger = liu_logger;
     lexer_init();
     typechecker_init();
 }
@@ -63,7 +63,7 @@ assert_result :: (res: Result($T)) -> T {
         return res.value;
 
     log("[%,%]: %", res.begin, res.end, res.error);
-    #if GONE_DEBUG { print_stack_trace(*res.stack_trace[0]); }
+    #if LIU_DEBUG { print_stack_trace(*res.stack_trace[0]); }
     exit(1);
     return res.value;
 }
@@ -73,6 +73,6 @@ assert_result :: (res: Result(void)) {
         return;
 
     log("[%,%]: %", res.begin, res.end, res.error);
-    #if GONE_DEBUG { print_stack_trace(*res.stack_trace[0]); }
+    #if LIU_DEBUG { print_stack_trace(*res.stack_trace[0]); }
     exit(1);
 }

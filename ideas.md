@@ -30,8 +30,8 @@ creates the `Worker` type as well as `Worker.Intern`, `Worker.FullTime`, and
 `Worker.Manager`. `Worker` is defined as
 `Worker.Intern | Worker.FullTime | Worker.Manager`.
 
-Project dependencies are in `.gone-deps`. Files passed to compiler run in order
-that they are passed; folders run `init.gme` first, then the rest is decided by
+Project dependencies are in `.liu-deps`. Files passed to compiler run in order
+that they are passed; folders run `init.liu` first, then the rest is decided by
 import order.
 
 Casting an anonymous struct to a named struct type causes the type's constructor
@@ -94,4 +94,15 @@ The following extensions to the language hopefully can be done in the language i
 - Make compiler restructure data to allow for weird padding stuff.
 - Overload dot operator like Swift, so it calls a function and passes the member
   name as a string.
+- The swift closure thing. Haven't decided if it will actually be a closure, or
+  just like a code block, but it does seem like it'd be nice to have.
+
+  ```
+  a.b() {
+    print(it);
+  }
+  ```
+
+- iterator methods are just for_expansions from jai but without having to make a
+  custom type or go through iterator resolution
 

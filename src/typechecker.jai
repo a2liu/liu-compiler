@@ -1,18 +1,11 @@
 #import "Basic";
 #import "Hash_Table";
 
-#import "gone";
-
-// should probably include stuff about what file this came from
-DeclInfo :: struct {
-   ident_nullable : *DeclarationIdent; // if this is null, then its a builtin type
-   constant_value_nullable : *Expr; // exists if the declaration was a constant declaration
-   type : GoneType;
-}
+#import "liu";
 
 Scope :: struct {
-    comptime_variables : Table(s32, DeclInfo);
-    runtime_variables : Table(s32, DeclInfo);
+    comptime_variables : Table(s32, *DeclarationIdent);
+    runtime_variables : Table(s32, *DeclarationIdent);
     parent: *Scope = null;
 
     make :: (parent : *Scope = null) -> Scope {
@@ -26,14 +19,14 @@ Scope :: struct {
 }
 
 check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
-    declared_type : GoneType = UNSPECIFIED_TYPE;
+    declared_type : LiuType = UNSPECIFIED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
         unwrap(check_expr(type_decl, scope));
         declared_type = unwrap(as_type_expr(type_decl));
     }
 
-    value_type : GoneType = UNSPECIFIED_TYPE;
+    value_type : LiuType = UNSPECIFIED_TYPE;
     value := decl_node.value_nullable;
     assert(value != null); // @Todo this should probably be allowed
     unwrap(check_expr(value, scope, expected_type = declared_type));
@@ -47,11 +40,9 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     if value_ptr
         throw(decl_node, "redeclared identifier");
 
-    decl_info : DeclInfo;
-    decl_info.ident_nullable = ident;
-    decl_info.constant_value_nullable = null;
-    decl_info.type = declared_type;
-    table_add(*scope.runtime_variables, ident.symbol, decl_info);
+    // @Todo this needs to change when i add supporting compile-time declarations
+    set_type(ident, declared_type);
+    table_add(*scope.runtime_variables, ident.symbol, ident);
 
     // for decl_node.idents {
     // }
@@ -59,7 +50,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     ret(decl_node, VOID_TYPE);
 }
 
-check_type_transition :: (node: *$T/Expr, target: GoneType, value_type: GoneType) -> Result(GoneType) {
+check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType) -> Result(LiuType) {
     assert(value_type != UNSPECIFIED_TYPE);
 
     if target == value_type
@@ -68,15 +59,12 @@ check_type_transition :: (node: *$T/Expr, target: GoneType, value_type: GoneType
     if target == UNSPECIFIED_TYPE
         return success(value_type);
 
-    return error(node, "type mismatch", success_type = GoneType);
+    return error(node, "type mismatch", success_type = LiuType);
 }
 
 check_file :: (file: *FileExpr) -> Result(void) {
     if is_typed(file)       ret();
-
-    assert(context.current_tree == null, "a file should not be inside another file");
-    context.current_tree = file;
-    defer context.current_tree = null;
+    use_tree(file);
 
     global_scope := Scope.make();
     unwrap(check_scope(file.statements, *global_scope));
@@ -123,17 +111,21 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 
     case .IDENT;
         ident := cast(*IdentExpr) expr;
-        success, decl_info := search_scope(scope, ident.symbol);
-        if !success
+        decl := search_scope(scope, ident.symbol);
+        if !decl {
+            log("%\n", ident);
+            for scope.runtime_variables {
+                log("% -> %\n", it_index, type_of_expr(it));
+            }
             throw(ident, "unrecognized identifier");
-
-        value := decl_info.constant_value_nullable;
-        if decl_info.type == TYPE_TYPE && value {
-            type_value := unwrap(as_type_expr(value));
-            ret_type(ident, type_value);
         }
 
-        ret(ident, decl_info.type);
+        type_value_result := as_type_expr(decl);
+        if type_value_result.did_succeed {
+            ret_type(ident, type_value_result.value);
+        }
+
+        ret(ident, type_of_expr(decl));
 
     case .CALL;
         // @Todo lmao this is totally wrong
@@ -164,76 +156,65 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     ret(expr, UNSPECIFIED_TYPE); // for control flow warnings
 }
 
-as_type_expr :: (expr: *Expr) -> Result(GoneType) {
-    assert((expr.type_flags & .IS_TYPED) != 0);
+as_type_expr :: (expr: *Expr) -> Result(LiuType) {
+    assert((expr.type_flags & .IS_TYPED) != 0, "expr at [%,%] wasn't typed!", expr.begin, expr.end);
 
     if expr.type_flags & .TYPE_SLOT_IS_VALUE
         return success(expr.type_slot);
 
-    return error(expr, "the value here needs to be a type", success_type = GoneType);
+    return error(expr, "the value here needs to be a type", success_type = LiuType);
 }
 
 typechecker_init :: () {
     builtin_scope = Scope.make();
-    info : DeclInfo;
-    expr : *Expr;
+    ident : *DeclarationIdent;
 
-    info.ident_nullable = null;
-    expr = New(Expr); // leak-gang
-    expr.kind = .EMPTY_PAREN;
-    expr.begin = -1;
-    expr.end = -1;
-    expr.type_slot = S64_TYPE;
-    expr.type_flags = .IS_TYPED;
-    expr.type_flags |= .TYPE_SLOT_IS_VALUE;
-    info.constant_value_nullable = expr;
-    info.type = TYPE_TYPE;
+    ident = New(DeclarationIdent); // leak-gang
+    ident.symbol = S64_SYMBOL;
+    ident.begin = -1;
+    ident.end = -1;
+    set_type_as_value(ident, S64_TYPE);
 
-    table_add(*builtin_scope.comptime_variables, S64_SYMBOL, info);
+    table_add(*builtin_scope.comptime_variables, S64_SYMBOL, ident);
 }
 
 #scope_file
 
 builtin_scope : Scope = ---;
 
-search_scope :: (scope: *Scope, ident: s32, search_builtin := true) -> bool, DeclInfo {
-    if search_builtin {
-        decl_info, success := table_find(builtin_scope.runtime_variables, ident);
-        if success
-            return true, decl_info;
+search_scope :: (scope: *Scope, ident: s32, $search_builtin := true) -> *DeclarationIdent {
+    decl : *DeclarationIdent = ---;
+    success : bool = ---;
 
-        decl_info, success = table_find(builtin_scope.comptime_variables, ident);
-        if success
-            return true, decl_info;
+    #if search_builtin {
+        decl, success = table_find(builtin_scope.comptime_variables, ident);
+        if success      return decl;
     }
 
-    decl_info, success := table_find(scope.runtime_variables, ident);
-    if success
-        return true, decl_info;
+    decl, success = table_find(scope.runtime_variables, ident);
+    if success      return decl;
 
-    decl_info, success = table_find(scope.comptime_variables, ident);
-    if success
-        return true, decl_info;
+    decl, success = table_find(scope.comptime_variables, ident);
+    if success      return decl;
 
     if scope.parent {
-        success, decl_info = search_scope(scope.parent, ident, search_builtin = false);
-        return success, decl_info;
+        return search_scope(scope.parent, ident, search_builtin = false);
     }
 
-    return false, decl_info;
+    return null;
 }
 
 ret :: () #expand {
     `return success();
 }
 
-ret :: (expr: *Expr, type: GoneType) #expand {
+ret :: (expr: *Expr, type: LiuType) #expand {
     set_type(expr, type);
 
     `return success();
 }
 
-ret_type :: (expr: *Expr, type: GoneType) #expand {
+ret_type :: (expr: *Expr, type: LiuType) #expand {
     set_type_as_value(expr, type);
 
     `return success();
@@ -243,7 +224,7 @@ throw :: (value: *$T/interface Spanned, message: string, loc := #caller_location
     `return error(value, message, loc = loc);
 }
 
-unwrap :: (result: Result(GoneType)) -> GoneType #expand {
+unwrap :: (result: Result(LiuType)) -> LiuType #expand {
     if !result.did_succeed {
         res := result;
         `return error(*res, result.error);
@@ -259,7 +240,7 @@ unwrap :: (result: Result(void)) #expand {
     }
 }
 
-set_type :: inline (value : *Expr, ty: GoneType) {
+set_type :: inline (value : *Expr, ty: LiuType) {
     assert(!is_typed(value));
     assert(ty != UNSPECIFIED_TYPE);
 
@@ -268,11 +249,12 @@ set_type :: inline (value : *Expr, ty: GoneType) {
     value.type_flags = value.type_flags | .IS_TYPED;
 }
 
-set_type_as_value :: inline (value : *Expr, ty: GoneType) {
+set_type_as_value :: inline (value : *Expr, ty: LiuType) {
     assert(!is_typed(value));
     assert(ty != UNSPECIFIED_TYPE, "set null as type value %", ty);
 
     value.type_slot.type_id = ty.type_id;
     value.type_slot.pointer_count = ty.pointer_count;
-    value.type_flags = value.type_flags | .IS_TYPED | .TYPE_SLOT_IS_VALUE;
+    value.type_flags = .IS_TYPED;
+    value.type_flags |= .TYPE_SLOT_IS_VALUE;
 }

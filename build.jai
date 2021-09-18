@@ -46,23 +46,12 @@ init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string 
     return w, out_options, import_path;
 }
 
-get_cwd :: () -> string {
-    #if OS == .WINDOWS {
-        result, success := get_working_directory();
-        assert(success);
-        return result;
-    } else {
-        result := get_working_directory();
-        return result;
-    }
-}
-
 is_initial_file :: (loc := #caller_location) -> bool {
     files, run_strings := compiler_get_source_files();
     max_len := 0;
     for files   max_len = max(it.count, max_len);
 
-    result := get_cwd();
+    result := get_working_directory();
 
     result_data : [] u8 = ---;
     result_data.data = result.data;
@@ -109,9 +98,7 @@ is_initial_file :: (loc := #caller_location) -> bool {
 #run {
     if !is_initial_file()       return;
 
-    options := get_build_options();
-    options.output_type = .NO_OUTPUT;  // No executable for the primary workspace.
-    set_build_options(options);
+    set_build_options_dc(.{ do_output = false });
 
     w, out_options, import_path := init_build("Output Executable");
     user, system := compiler_get_command_line_arguments();
@@ -135,7 +122,7 @@ is_initial_file :: (loc := #caller_location) -> bool {
 
     if mode == {
     case .EXE;
-        out_options.output_executable_name = "gone";
+        out_options.output_executable_name = "liu";
         out_options.output_type = .EXECUTABLE;
     case .TEST;
         out_options.output_type = .NO_OUTPUT;

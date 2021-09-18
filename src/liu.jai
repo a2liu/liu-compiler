@@ -2,11 +2,9 @@
 #import "buckets";
 #import "hashmap";
 
-GONE_DEBUG :: true;
+LIU_DEBUG :: true;
 
-#add_context current_tree : *FileExpr = null;
-
-gone_logger :: (message: string, data: *void, info: Log_Info) {
+liu_logger :: (message: string, data: *void, info: Log_Info) {
     loc := info.location;
     print("[%:%,%] %\n", loc.fully_pathed_filename, loc.line_number, loc.character_number, message);
 }
@@ -61,12 +59,12 @@ add_symbol :: (syms: *Symbols, ident: string) -> s32 {
 }
 
 // @Todo maybe everything under 0 should be a type variable
-// UN_TYPE :: GoneType.{ type_id = -2, pointer_count = 0 };
-// SN_TYPE :: GoneType.{ type_id = -1, pointer_count = 0 };
-UNSPECIFIED_TYPE :: GoneType.{ type_id = 0, pointer_count = 0 };
-VOID_TYPE :: GoneType.{ type_id = 1, pointer_count = 0 };
-S64_TYPE :: GoneType.{ type_id = 2, pointer_count = 0 };
-TYPE_TYPE :: GoneType.{ type_id = 3, pointer_count = 0 };
+// UN_TYPE :: LiuType.{ type_id = -2, pointer_count = 0 };
+// SN_TYPE :: LiuType.{ type_id = -1, pointer_count = 0 };
+UNSPECIFIED_TYPE :: LiuType.{ type_id = 0, pointer_count = 0 };
+VOID_TYPE :: LiuType.{ type_id = 1, pointer_count = 0 };
+S64_TYPE :: LiuType.{ type_id = 2, pointer_count = 0 };
+TYPE_TYPE :: LiuType.{ type_id = 3, pointer_count = 0 };
 
 // CASED_UN_TYPE :: #run cased(UN_TYPE);
 // CASED_SN_TYPE :: #run cased(SN_TYPE);
@@ -75,21 +73,21 @@ CASED_VOID_TYPE :: #run cased(VOID_TYPE);
 CASED_S64_TYPE :: #run cased(S64_TYPE);
 CASED_TYPE_TYPE :: #run cased(TYPE_TYPE);
 
-GoneType :: struct {
+LiuType :: struct {
     type_id : s32 = 0;
     pointer_count : u8 = 0;
 }
 
-cased :: (gone_type: GoneType) -> s64 {
-    out : union { ty: GoneType; value: s64; } = ---;
+cased :: (liu_type: LiuType) -> s64 {
+    out : union { ty: LiuType; value: s64; } = ---;
     out.value = 0;
-    out.ty.type_id = gone_type.type_id;
-    out.ty.pointer_count = gone_type.pointer_count;
+    out.ty.type_id = liu_type.type_id;
+    out.ty.pointer_count = liu_type.pointer_count;
 
     return out.value;
 }
 
-operator == :: inline (left: GoneType, right: GoneType) -> bool {
+operator == :: inline (left: LiuType, right: LiuType) -> bool {
     return (left.type_id == right.type_id) & (left.pointer_count == right.pointer_count);
 }
 
@@ -160,25 +158,28 @@ Expr :: struct {
         TYPE_SLOT_IS_VALUE;
     }
 
-    type_slot : GoneType = UNSPECIFIED_TYPE;
+    // @Todo we could potentially try to pack in a pointer to a constant value
+    // well. Although maybe at that point its not worth it.
+    type_slot : LiuType = UNSPECIFIED_TYPE;
     #place type_slot;
     do_not_used_s32 : s32 = ---;
     do_not_used_u8 : u8 = ---;
     padding_u8 : u8 = ---; // @Todo we can use these for flags
     type_flags : TypeFlags = 0;
 
-    // These bois make sure that nothing fishy happens to GoneType, because we use its padding for data
-    #assert(size_of(GoneType) == 8);
-    #assert(type_info(GoneType).members.count == 2);
-    #assert(has_field_at_index(GoneType, s32, 0));
-    #assert(has_field_at_index(GoneType, u8, 1));
+    // These bois make sure that nothing fishy happens to LiuType, because we use its padding for data
+    #assert(size_of(LiuType) == 8);
+    #assert(type_info(LiuType).members.count == 2);
+    #assert(has_field_at_index(LiuType, s32, 0));
+    #assert(has_field_at_index(LiuType, u8, 1));
 }
 
 is_typed :: (expr: *Expr) -> bool {
+    assert(expr != null);
     return ((expr.type_flags & .IS_TYPED) != 0) && (expr.type_slot != UNSPECIFIED_TYPE);
 }
 
-type_of_expr :: (expr: *Expr) -> GoneType {
+type_of_expr :: (expr: *Expr) -> LiuType {
     assert(is_typed(expr));
     if expr.type_flags & .TYPE_SLOT_IS_VALUE
         return TYPE_TYPE;
@@ -244,7 +245,7 @@ IdentExprBase :: struct {
 IdentExpr :: struct {
     using _base : IdentExprBase;
     _base.kind = .IDENT;
-    references : *DeclarationIdent; // @Todo what if the reference is in a different file?
+    declaration : *DeclarationIdent; // @Todo what if the reference is in a different file?
 }
 
 IntegerExpr :: struct {
@@ -264,8 +265,8 @@ DotAccessExpr :: struct {
 DeclarationIdent :: struct {
     using _base : IdentExprBase;
     _base.kind = .DECLARATION_IDENT;
-    bytecode_register : s32;
-    do_not_use_0 : s32;
+    file_id : s32;
+    bytecode_register : s32 = -1;
 }
 
 DeclarationExpr :: struct {
@@ -274,6 +275,40 @@ DeclarationExpr :: struct {
     type_declaration_nullable : *Expr = null;
     value_nullable : *Expr = null;
     idents : [] DeclarationIdent;
+}
+
+#add_context current_tree : *FileExpr = null;
+
+use_tree :: (file: *FileExpr) #expand {
+    assert(file != null);
+    previous := context.current_tree;
+    // @Note compiler should switch the value of context.current_tree by switching
+    // contexts during job execution.
+    assert(previous == null);
+
+    context.current_tree = file;
+    `defer context.current_tree = previous;
+}
+
+Buck :: ($T: Type, buckets : *BucketList = null) -> *T {
+    bucketlist := buckets;
+    if bucketlist == null {
+        assert(context.current_tree != null);
+        bucketlist = *context.current_tree.buckets;
+    }
+
+    push_allocator(bucket_allocator, bucketlist);
+    value := New(T, initialized = true);
+
+    return value;
+}
+
+BuckArray :: (array: [] $T) -> [] T {
+    assert(context.current_tree != null);
+    push_allocator(bucket_allocator, *context.current_tree.buckets);
+    out : [] T = NewArray(array.count, T, initialized = false);
+    memcpy(out.data, array.data, array.count * size_of(T));
+    return out;
 }
 
 // it_index is the level in the tree you're at
@@ -431,9 +466,9 @@ error :: (value: *$T/interface Spanned, message: string, loc := #caller_location
     result.end = value.end;
     result.did_succeed = false;
     result.error = message;
-    #if GONE_DEBUG && #run has_member(T, "stack_trace", [] Stack_Trace_Node) {
+    #if LIU_DEBUG && #run has_member(T, "stack_trace", [] Stack_Trace_Node) {
         result.stack_trace = value.stack_trace;
-    } else #if GONE_DEBUG {
+    } else #if LIU_DEBUG {
         result.stack_trace = pack_stack_trace();
         result.stack_trace[0] = result.stack_trace[1];
         result.stack_trace[0].line_number = cast(u32) loc.line_number;
