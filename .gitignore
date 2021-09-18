@@ -2,6 +2,7 @@
 
 !.gitignore
 !*.md
+!LICENSE
 !*.jai
 !*.liu
 
