@@ -110,9 +110,9 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
     // simple declarations
     success, matches := match(.IDENT, .COLON);
     if success {
-        idents : [..] DeclarationIdent;
+        idents : [..] *DeclarationIdent;
         defer array_free(idents);
-        ident : DeclarationIdent;
+        ident := Buck(DeclarationIdent);
         ident.symbol = matches[0].ident_symbol;
         ident.begin = matches[0].begin;
         ident.end = matches[0].end;

@@ -128,6 +128,7 @@ error :: (value: *$T/interface Span, message: string, loc := #caller_location, $
     result : Result(success_type);
     result.did_succeed = false;
     error := New(Error);
+    error.message = message;
     error.begin = value.begin;
     error.end = value.end;
     #if LIU_DEBUG && #run has_member(T, "stack_trace", [] Stack_Trace_Node) {

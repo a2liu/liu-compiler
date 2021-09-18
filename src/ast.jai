@@ -218,7 +218,7 @@ DeclarationExpr :: struct {
     _base.kind = .DECLARATION;
     type_declaration_nullable : *Expr = null;
     value_nullable : *Expr = null;
-    idents : [] DeclarationIdent;
+    idents : [] *DeclarationIdent;
 }
 
 #add_context current_tree : *FileExpr = null;
@@ -255,33 +255,71 @@ BuckArray :: (array: [] $T) -> [] T {
     return out;
 }
 
-// it_index is the level in the tree you're at
 for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
+    #assert(!flags);
+
+    `it : *Expr;
+    `it_index : s64;
+    for expr, level: ast_dfs(iter) {
+        it = expr;
+        it_index = level;
+
+        #insert body;
+    }
+}
+
+ast_dfs :: (iter: *Expr, insertion_style : AstDfs.InsertionStyle = .NO_INSERT) -> AstDfs {
+    ast_dfs : AstDfs;
+    ast_dfs.begin = iter;
+    ast_dfs.insertion_style = insertion_style;
+
+    return ast_dfs;
+}
+
+AstDfs :: struct {
+    begin : *Expr = null;
+    insertion_style : InsertionStyle = .NO_INSERT;
+
+    InsertionStyle :: enum {
+        NO_INSERT;
+        VISIT_ORIGINAL;
+        VISIT_INSERTED;
+    }
+}
+
+
+// it_index is the level in the tree you're at
+for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
     #assert(!flags);
 
     // @Todo Eventually do we want to use this stuff for like, visitor pattern whatevers?
     Node :: struct {
-        expr: *Expr;
+        expr: *Expr = null;
+        explored_from: **Expr = null;
         level: s64;
     }
 
     visit :: (exprs: .. Any) #expand {
         node := `node;
         nodes := *`nodes;
-        for < exprs {
-            if it.value_pointer == null       continue;
-            info := it.type;
+        for < arg: exprs {
+            if arg.value_pointer == null       continue;
+            info := arg.type;
 
             if info == type_info(*Expr) {
-                node.expr = << cast(**Expr) it.value_pointer;
+                node.explored_from = cast(**Expr) arg.value_pointer;
+                node.expr = << node.explored_from;
                 if node.expr == null    continue;
                 array_add(nodes, node);
+                continue;
             }
 
             if info == type_info([] *Expr) {
-                exprs := << cast(*[] *Expr) it.value_pointer;
-                for < exprs {
-                    node.expr = it;
+                exprs := << cast(*[] *Expr) arg.value_pointer;
+                for * < exprs {
+                    node.explored_from = it;
+                    node.expr = << it;
+                    if node.expr == null    continue;
                     array_add(nodes, node);
                 }
             }
@@ -290,47 +328,56 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
 
     nodes : [..] Node;
     node : Node;
-    node.expr = iter;
+    node.expr = iter.begin;
     node.level = 0;
     array_add(*nodes, node);
 
-    prev_index := -1;
     while nodes.count > 0 {
         node = pop(*nodes);
         `it := node.expr;
         `it_index := node.level;
-        `it_motion := it_index - prev_index;
-        prev_index = it_index;
 
         #insert body;
 
+        if (iter.insertion_style != .NO_INSERT) && node.explored_from {
+            << node.explored_from = it;
+        }
+
+        if node.level == -1
+            continue;
+
+        expr := node.expr;
+        if iter.insertion_style == .VISIT_INSERTED {
+            expr = it;
+        }
+
         node.level += 1;
-        if it.kind == { // @Todo add #complete to this
+        if expr.kind == { // @Todo add #complete to this
         case .UNINITIALIZED;
             assert(false, "found uninitialized node");
 
         case .FILE;
-            file := cast(*FileExpr) it;
+            file := cast(*FileExpr) expr;
             visit(file.statements);
 
         case .BLOCK;
-            block := cast(*BlockExpr) it;
+            block := cast(*BlockExpr) expr;
             visit(block.statements);
 
         case .TUPLE;
-            tuple := cast(*TupleExpr) it;
+            tuple := cast(*TupleExpr) expr;
             visit(tuple.members);
 
         case .DECLARATION;
-            decl := cast(*DeclarationExpr) it;
-            visit(decl.type_declaration_nullable, decl.value_nullable);
+            decl := cast(*DeclarationExpr) expr;
+            visit(decl.idents, decl.type_declaration_nullable, decl.value_nullable);
 
         case .CALL;
-            call := cast(*CallExpr) it;
+            call := cast(*CallExpr) expr;
             visit(call.callee, call.arguments);
 
         case .SUBSCRIPT;
-            subscript := cast(*SubscriptExpr) it;
+            subscript := cast(*SubscriptExpr) expr;
             visit(subscript.callee, subscript.arguments);
 
         // Binary op
@@ -350,7 +397,7 @@ for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
         case .BIT_OR;           #through;
         case .BIT_XOR;          #through;
         case .BIT_AND;
-            binary := cast(*BinaryExpr) it;
+            binary := cast(*BinaryExpr) expr;
             visit(binary.left, binary.right);
         }
     }

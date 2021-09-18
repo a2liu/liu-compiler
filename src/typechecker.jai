@@ -36,10 +36,11 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     assert(decl_node.idents.count == 1);
 
     declared_type = unwrap(check_type_transition(decl_node, declared_type, value_type));
-    ident := *decl_node.idents[0];
-    value_ptr := table_find_pointer(scope.runtime_variables, ident.symbol);
-    if value_ptr
+    ident := decl_node.idents[0];
+    previous, success := table_find(scope.runtime_variables, ident.symbol);
+    if success
         throw(decl_node, "redeclared identifier");
+    assert(previous != null);
 
     // @Todo this needs to change when i add supporting compile-time declarations
     set_type(ident, declared_type);
@@ -113,9 +114,8 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     case .IDENT;
         ident := cast(*IdentExpr) expr;
         decl := search_scope(scope, ident.symbol);
-        if !decl {
+        if !decl
             throw(ident, "unrecognized identifier");
-        }
 
         ident.declaration = decl;
         type_value_result := as_type_expr(decl);

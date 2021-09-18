@@ -10,6 +10,7 @@
 #import "typechecker";
 #import "bytecode";
 #import "utils";
+#import "moving_gc";
 
 init :: () {
     context.logger = liu_logger;
@@ -40,17 +41,54 @@ run :: (text: string) -> s64 {
     symbols := Symbols.make();
     file := assert_result(parse_file(*symbols, 0, text));
 
+    file_ : [..] *Expr;
+    for file {
+        array_add(*file_, it);
+    }
+
     for stmt: file.statements {
+        assert(stmt != null);
         for stmt {
-            print("%", << it);
+            print("% ", << it);
         }
         print("\n");
     }
     print("\n");
 
+
+    file2 := run_gc(file);
+    file2_ : [..] *Expr;
+    array_reserve(*file2_, file_.count);
+    for file2 {
+        array_add(*file2_, it);
+    }
+
     assert_result(check_file(file));
 
-    block := bytecode_file(file);
+    file3 := run_gc(file);
+    file3_ : [..] *Expr;
+    array_reserve(*file3_, file_.count);
+    for file3 {
+        array_add(*file3_, it);
+    }
+
+    assert_eq(file_.count, file2_.count);
+    assert_eq(file2_.count, file3_.count);
+    for file_ {
+        it2 := file2_[it_index];
+        it3 := file3_[it_index];
+
+        assert(it != null);
+        assert(it2 != null);
+        assert(it3 != null);
+        assert(it != it2);
+        assert(it != it3);
+        assert(it2 != it3);
+        assert_eq(it.kind, it2.kind);
+        assert_eq(it2.kind, it3.kind);
+    }
+
+    block := bytecode_file(file3);
 
     print("basic block:\n");
     for block {
@@ -62,6 +100,18 @@ run :: (text: string) -> s64 {
     interp := Interpreter.make();
     return interp_file(*interp, *block);
 }
+
+assert_eq :: inline (left: $T, right: T, message := "left and right are not equal", args: .. Any, loc := #caller_location) {
+    if left == right        return;
+
+    if context.handling_assertion_failure  return;  // Avoid infinite loops.
+    context.handling_assertion_failure = true;
+
+    // We provide 'loc' in case _STACK_TRACE is turned off, but assertion_failed may well
+    // look at the stack trace if it is available.
+    context.assertion_failed(loc, tprint("% != %, %", left, right, tprint(message, ..args)));
+    context.handling_assertion_failure = false;
+} @NoProfile @NoDebug
 
 assert_result :: (res: Result($T)) -> T {
     err, value := read(res);
