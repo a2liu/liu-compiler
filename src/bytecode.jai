@@ -119,6 +119,17 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     case .FILE;
         assert(false, "files within other expressions doesn't make any sense.");
 
+    case .IDENT;
+        ident := cast(*IdentExpr) expr;
+        return ident.declaration.bytecode_register;
+
+    case .INTEGER;
+        integer := cast(*IntegerExpr) expr;
+        assert(type_of_expr(integer) == S64_TYPE);
+        op := alloc_op(bb, LiteralS64Op, integer);
+        op.value = integer.value;
+        ret(bb, op);
+
     case .BLOCK;
         block := cast(*BlockExpr) expr;
         bytecode_block(bb, block);
@@ -126,7 +137,8 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     case .DECLARATION;
         decl := cast(*DeclarationExpr) expr;
         assert(decl.value_nullable != null);
-        bytecode_expr(bb, decl.value_nullable);
+        assert(decl.idents.count == 1);
+        decl.idents[0].bytecode_register = bytecode_expr(bb, decl.value_nullable);
 
     case .ADD;
         add := cast(*BinaryExpr) expr;
@@ -136,13 +148,6 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         op.kind = .ADD;
         op.left = index_to_op(bb, left);
         op.right = index_to_op(bb, right);
-        ret(bb, op);
-
-    case .INTEGER;
-        integer := cast(*IntegerExpr) expr;
-        assert(type_of_expr(integer) == S64_TYPE);
-        op := alloc_op(bb, LiteralS64Op, integer);
-        op.value = integer.value;
         ret(bb, op);
     }
 

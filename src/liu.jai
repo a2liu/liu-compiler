@@ -143,7 +143,7 @@ Expr :: struct {
     }
 
     SyntaxFlags :: enum_flags u8 {
-        COMPTIME_DECLARATION;
+        // COMPTIME_DECLARATION;
         PARENTHESIZED;
     }
 
@@ -237,17 +237,6 @@ SubscriptExpr :: struct {
     arguments : [] *Expr; // arguments allocated right after subscript struct
 }
 
-IdentExprBase :: struct {
-    using __base : Expr;
-    symbol : s32;
-}
-
-IdentExpr :: struct {
-    using _base : IdentExprBase;
-    _base.kind = .IDENT;
-    declaration : *DeclarationIdent; // @Todo what if the reference is in a different file?
-}
-
 IntegerExpr :: struct {
     using _base : Expr;
     _base.kind = .INTEGER;
@@ -259,6 +248,17 @@ DotAccessExpr :: struct {
     _base.kind = .DOT_ACCESS;
     field_symbol : s32;
     base_object : *Expr;
+}
+
+IdentExprBase :: struct {
+    using __base : Expr;
+    symbol : s32;
+}
+
+IdentExpr :: struct {
+    using _base : IdentExprBase;
+    _base.kind = .IDENT;
+    declaration : *DeclarationIdent = null; // @Todo what if the reference is in a different file?
 }
 
 #assert(size_of(IdentExpr) == size_of(DeclarationIdent));

@@ -113,13 +113,10 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         ident := cast(*IdentExpr) expr;
         decl := search_scope(scope, ident.symbol);
         if !decl {
-            log("%\n", ident);
-            for scope.runtime_variables {
-                log("% -> %\n", it_index, type_of_expr(it));
-            }
             throw(ident, "unrecognized identifier");
         }
 
+        ident.declaration = decl;
         type_value_result := as_type_expr(decl);
         if type_value_result.did_succeed {
             ret_type(ident, type_value_result.value);
