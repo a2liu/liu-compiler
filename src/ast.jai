@@ -6,14 +6,14 @@
 // UN_TYPE :: LiuType.{ type_id = -2, pointer_count = 0 };
 // SN_TYPE :: LiuType.{ type_id = -1, pointer_count = 0 };
 UNSPECIFIED_TYPE :: LiuType.{ type_id = 0, pointer_count = 0 };
-VOID_TYPE :: LiuType.{ type_id = 1, pointer_count = 0 };
+NONE_TYPE :: LiuType.{ type_id = 1, pointer_count = 0 };
 S64_TYPE :: LiuType.{ type_id = 2, pointer_count = 0 };
 TYPE_TYPE :: LiuType.{ type_id = 3, pointer_count = 0 };
 
 // CASED_UN_TYPE :: #run cased(UN_TYPE);
 // CASED_SN_TYPE :: #run cased(SN_TYPE);
 CASED_UNSPECIFIED_TYPE :: #run cased(UNSPECIFIED_TYPE);
-CASED_VOID_TYPE :: #run cased(VOID_TYPE);
+CASED_NONE_TYPE :: #run cased(NONE_TYPE);
 CASED_S64_TYPE :: #run cased(S64_TYPE);
 CASED_TYPE_TYPE :: #run cased(TYPE_TYPE);
 

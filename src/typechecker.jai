@@ -48,7 +48,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     // for decl_node.idents {
     // }
 
-    ret(decl_node, VOID_TYPE);
+    ret(decl_node, NONE_TYPE);
 }
 
 check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType) -> Result(LiuType) {
@@ -69,7 +69,7 @@ check_file :: (file: *FileExpr) -> Result(void) {
 
     global_scope := Scope.make();
     unwrap(check_scope(file.statements, *global_scope));
-    set_type(file, VOID_TYPE);
+    set_type(file, NONE_TYPE);
     ret();
 }
 
@@ -79,7 +79,7 @@ check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
     scope := Scope.make();
     unwrap(check_scope(block.statements, *scope));
 
-    set_type(block, VOID_TYPE);
+    set_type(block, NONE_TYPE);
     ret();
 }
 
@@ -128,7 +128,7 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     case .CALL;
         // @Todo lmao this is totally wrong
         call := cast(*CallExpr) expr;
-        ret(call, VOID_TYPE);
+        ret(call, NONE_TYPE);
 
     case .ADD;
         // @Todo this doesn't really scale, nor does it really check whether or
@@ -144,7 +144,6 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         ret(plus, expr_type);
 
     case .DECLARATION;
-        // @Todo the entire thing lmao
         decl := cast(*DeclarationExpr) expr;
         unwrap(check_decl(decl, scope));
         ret();
