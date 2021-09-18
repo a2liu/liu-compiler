@@ -11,17 +11,15 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
     init(*translations);
 
     buckets := BucketList.make();
-    to_file := New(FileExpr, allocator = bucket_allocator, allocator_data = *buckets);
-    to_file.buckets = buckets;
-    table_add(*translations, cast(u64) file, to_file); // hack to get things to work
 
     // allocate the new tree's nodes, marking when something in from-space goes to
     // something in to-space
     for file {
         Copy :: (original: *$T) -> *T #expand {
-            push_allocator(bucket_allocator, *to_file.buckets);
+            push_allocator(bucket_allocator, *`buckets);
             new_obj := New(T, initialized = false);
             memcpy(new_obj, original, size_of(T));
+            table_set(*translations, cast(u64) original, new_obj);
             return new_obj;
         }
 
@@ -31,37 +29,33 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
 
         case .FILE;
             file := cast(*FileExpr) it;
-            to_file.statements = array_copy(file.statements);
+            new_file := Copy(file);
+            new_file.statements = array_copy(file.statements);
 
         case .BLOCK;
             block := cast(*BlockExpr) it;
             new_block := Copy(block);
             new_block.statements = array_copy(block.statements);
-            table_add(*translations, cast(u64) block, new_block);
 
         case .TUPLE;
             tuple := cast(*TupleExpr) it;
             new_tuple := Copy(tuple);
             new_tuple.members = array_copy(tuple.members);
-            table_add(*translations, cast(u64) tuple, new_tuple);
 
         case .DECLARATION;
             decl := cast(*DeclarationExpr) it;
             new_decl := Copy(decl);
             new_decl.idents = array_copy(decl.idents);
-            table_add(*translations, cast(u64) decl, new_decl);
 
         case .CALL;
             call := cast(*CallExpr) it;
             new_call := Copy(call);
             new_call.arguments = array_copy(call.arguments);
-            table_add(*translations, cast(u64) call, new_call);
 
         case .SUBSCRIPT;
             subscript := cast(*SubscriptExpr) it;
             new_subscript := Copy(subscript);
             new_subscript.arguments = array_copy(subscript.arguments);
-            table_add(*translations, cast(u64) subscript, new_subscript);
 
         // Binary op
         case .ADD;             #through;
@@ -82,20 +76,18 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
         case .BIT_AND;
             binary := cast(*BinaryExpr) it;
             new_binary := Copy(binary);
-            table_add(*translations, cast(u64) binary, new_binary);
 
         case .IDENT;
             ident := cast(*IdentExpr) it;
             new_ident := Copy(ident);
-            table_add(*translations, cast(u64) ident, new_ident);
 
         case .INTEGER;
             integer := cast(*IntegerExpr) it;
             new_integer := Copy(integer);
-            table_add(*translations, cast(u64) integer, new_integer);
         }
     }
 
+    // fix up references
     for ast_dfs(file, insertion_style = .VISIT_INSERTED) {
         new_pointer, success := table_find(translations, cast(u64) it);
         assert(success, "we missed a node (kind=%)", it.kind);
@@ -103,5 +95,10 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
         it = new_pointer;
     }
 
+    file_expr, success := table_find(translations, cast(u64) file);
+    assert(success);
+    assert(file_expr.kind == .FILE);
+    to_file := cast(*FileExpr) file_expr;
+    to_file.buckets = buckets;
     return to_file;
 }

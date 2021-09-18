@@ -118,13 +118,13 @@ Expr :: struct {
     #assert(has_field_at_index(LiuType, u8, 1));
 }
 
-is_typed :: (expr: *Expr) -> bool {
-    assert(expr != null);
+is_typed :: (expr: *Expr, loc := #caller_location) -> bool {
+    assert(expr != null, "expression was null", loc = loc);
     return ((expr.type_flags & .IS_TYPED) != 0) && (expr.type_slot != UNSPECIFIED_TYPE);
 }
 
-type_of_expr :: (expr: *Expr) -> LiuType {
-    assert(is_typed(expr));
+type_of_expr :: (expr: *Expr, loc := #caller_location) -> LiuType {
+    assert(is_typed(expr), "type_of_expr requires expression to be typed (type_flags=%)", expr.type_flags, loc = loc);
     if expr.type_flags & .TYPE_SLOT_IS_VALUE
         return TYPE_TYPE;
 

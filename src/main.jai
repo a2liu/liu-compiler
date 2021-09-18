@@ -46,6 +46,7 @@ run :: (text: string) -> s64 {
         array_add(*file_, it);
     }
 
+    print("ast:\n");
     for stmt: file.statements {
         assert(stmt != null);
         for stmt {
@@ -63,9 +64,9 @@ run :: (text: string) -> s64 {
         array_add(*file2_, it);
     }
 
-    assert_result(check_file(file));
+    assert_result(check_file(file2));
 
-    file3 := run_gc(file);
+    file3 := run_gc(file2);
     file3_ : [..] *Expr;
     array_reserve(*file3_, file_.count);
     for file3 {
@@ -84,8 +85,14 @@ run :: (text: string) -> s64 {
         assert(it != it2);
         assert(it != it3);
         assert(it2 != it3);
+
         assert_eq(it.kind, it2.kind);
         assert_eq(it2.kind, it3.kind);
+
+        print("kind = %\n", it2.kind);
+        type_of_expr(it2);
+        type_of_expr(it3);
+        assert_eq(type_of_expr(it2), type_of_expr(it3), "kind = %", it2.kind);
     }
 
     block := bytecode_file(file3);
