@@ -4,11 +4,11 @@
 #import "files";
 
 #import "liu";
-#import "buckets";
 #import "lexer";
 #import "parser";
 #import "typechecker";
 #import "bytecode";
+#import "interpreter";
 #import "utils";
 
 init :: () {
@@ -17,7 +17,7 @@ init :: () {
     typechecker_init();
 }
 
-run :: () {
+main :: () {
     init();
 
     compile(0, "hello : s64 = 12;");
@@ -28,13 +28,14 @@ test :: () {
 
     for f_info: bfs_visit_files("test", recursive = false) {
         text := read_entire_file(f_info.full_name);
-        compile(0, text);
+        result := run(0, text);
+        print("test '%' completed with result=%\n", f_info.full_name, result);
     }
 
     print("Tests completed successfully!\n");
 }
 
-compile :: (file_id: s32, text: string) {
+run :: (file_id: s32, text: string) -> s64 {
     symbols := Symbols.make();
     file := assert_result(parse_file(*symbols, file_id, text));
 
@@ -56,6 +57,10 @@ compile :: (file_id: s32, text: string) {
         print("kind: %, next: %, prev: %\n", it.kind, it.next, it.previous);
     }
     print("\n");
+
+    print("running code...\n");
+    interp := Interpreter.make();
+    return interp_file(*interp, *block);
 }
 
 assert_result :: (res: Result($T)) -> T {

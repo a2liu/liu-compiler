@@ -135,7 +135,7 @@ is_initial_file :: (loc := #caller_location) -> bool {
 
     if mode == {
     case .EXE;
-        add_build_string("Main :: #import \"main\";\nmain :: () { Main.run(); }\n", w);
+        add_build_string("Main :: #import \"main\";\nmain :: () { Main.main(); }\n", w);
 
     case .TEST;
         add_build_string("Main :: #import \"main\";\n#run Main.test();\n", w);

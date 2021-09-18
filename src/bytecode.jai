@@ -26,7 +26,7 @@ Opcode :: struct {
     next : *~s32 Opcode = null;
     previous : *~s32 Opcode = null;
 
-    register_id : s32;
+    register : s32;
 }
 
 LiteralS64Op :: struct {
@@ -161,7 +161,7 @@ alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Spanned) -> *T {
     pointer : *Opcode = output; // @Workaround repro/relative_pointers.jai
     relative_to_base := op_to_index(bb, pointer);
 
-    pointer.register_id = bb.next_register;
+    pointer.register = bb.next_register;
     bb.next_register += 1;
 
     pointer.span_begin = spanned.begin;
