@@ -182,23 +182,21 @@ typechecker_init :: () {
 
 builtin_scope : Scope = ---;
 
-search_scope :: (scope: *Scope, ident: s32, $search_builtin := true) -> *DeclarationIdent {
-    decl : *DeclarationIdent = ---;
-    success : bool = ---;
-
+search_scope :: (_scope: *Scope, ident: s32, $search_builtin := true) -> *DeclarationIdent {
     #if search_builtin {
-        decl, success = table_find(builtin_scope.comptime_variables, ident);
+        decl, success := table_find(builtin_scope.comptime_variables, ident);
         if success      return decl;
     }
 
-    decl, success = table_find(scope.runtime_variables, ident);
-    if success      return decl;
+    scope := _scope;
+    while scope {
+        decl, success := table_find(scope.runtime_variables, ident);
+        if success      return decl;
 
-    decl, success = table_find(scope.comptime_variables, ident);
-    if success      return decl;
+        decl, success = table_find(scope.comptime_variables, ident);
+        if success      return decl;
 
-    if scope.parent {
-        return search_scope(scope.parent, ident, search_builtin = false);
+        scope = scope.parent;
     }
 
     return null;

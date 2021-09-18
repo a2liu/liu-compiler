@@ -92,7 +92,7 @@ for_expansion :: (iter: *Opcode, body: Code, flags: For_Flags) #expand {
     }
 }
 
-// @Todo replace BasicBlock with actual thingy when it comes time
+// @Todo replace BasicBlock with actual module object or whatever when it comes time
 bytecode_file :: (file: *FileExpr) -> BasicBlock {
     bb := BasicBlock.make();
 
@@ -153,7 +153,7 @@ alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Spanned) -> *T {
     #assert(inherits_from(T, Opcode));
 
     output := bb_alloc(bb, T);
-    pointer : *Opcode = output;
+    pointer : *Opcode = output; // @Workaround repro/relative_pointers.jai
     relative_to_base := op_to_index(bb, pointer);
 
     pointer.register_id = bb.next_register;
