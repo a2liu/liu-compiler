@@ -154,36 +154,45 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     ret();
 }
 
-alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Spanned) -> *T {
-    #assert(inherits_from(T, Opcode));
+Interpreter :: struct {
+    registers : [..] s64; // @Todo change s64 to u64 when we start supporting more types
 
-    output := bb_alloc(bb, T);
-    pointer : *Opcode = output; // @Workaround repro/relative_pointers.jai
-    relative_to_base := op_to_index(bb, pointer);
+    make :: () -> Interpreter {
+        interp : Interpreter;
+        array_reserve(*interp.registers, 20);
+        return interp;
+    }
+}
 
-    pointer.register = bb.next_register;
-    bb.next_register += 1;
+interp_file :: (interp: *Interpreter, bb: *BasicBlock) -> s64 {
+    for op: bb {
+        if op.kind == {
+        case .UNINITIALIZED;
+            assert(false);
 
-    pointer.span_begin = spanned.begin;
-    pointer.span_length = cast(u16) (spanned.end - spanned.begin);
+        case .ADD;
+            add := cast(*BinaryOp) op;
+            left := interp.registers[add.left.register];
+            right := interp.registers[add.right.register];
+            set_register(interp, add.register, left + right);
 
-    pointer.next = null;
-
-
-    if bb.last >= 0 {
-        last := index_to_op(bb, bb.last);
-        last.next = pointer;
-        pointer.previous = last;
-        bb.last = relative_to_base;
-    } else {
-        assert(relative_to_base == 0);
-        pointer.previous = null;
-        bb.first = 0;
-        bb.last = 0;
+        case .LITERAL_S64;
+            literal := cast(*LiteralS64Op) op;
+            set_register(interp, literal.register, literal.value);
+        }
     }
 
-    assert(bb.last >= -1); // overflow happened probably
-    return output;
+    if interp.registers.count == 0
+        return 0;
+
+    return interp.registers[interp.registers.count - 1];
+}
+
+set_register :: (interp: *Interpreter, register: s64, value: s64) {
+    array_reserve(*interp.registers, register + 1); // this reserves enough space for register to be a valid index
+    interp.registers.count = register + 1;
+    assert(interp.registers.count <= interp.registers.allocated);
+    interp.registers[register] = value;
 }
 
 #scope_file
@@ -237,3 +246,36 @@ bb_alloc :: (bb: *BasicBlock, $T: Type) -> *T {
 
     return pointer;
 }
+
+alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Spanned) -> *T {
+    #assert(inherits_from(T, Opcode));
+
+    output := bb_alloc(bb, T);
+    pointer : *Opcode = output; // @Workaround repro/relative_pointers.jai
+    relative_to_base := op_to_index(bb, pointer);
+
+    pointer.register = bb.next_register;
+    bb.next_register += 1;
+
+    pointer.span_begin = spanned.begin;
+    pointer.span_length = cast(u16) (spanned.end - spanned.begin);
+
+    pointer.next = null;
+
+
+    if bb.last >= 0 {
+        last := index_to_op(bb, bb.last);
+        last.next = pointer;
+        pointer.previous = last;
+        bb.last = relative_to_base;
+    } else {
+        assert(relative_to_base == 0);
+        pointer.previous = null;
+        bb.first = 0;
+        bb.last = 0;
+    }
+
+    assert(bb.last >= -1); // overflow happened probably
+    return output;
+}
+

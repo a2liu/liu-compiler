@@ -85,13 +85,14 @@ The following extensions to the language hopefully can be done in the language i
 - Smart code diffing
 
 ### Small Ideas (Compiler/Language)
-- `guard` and `check` that are like `if` except their block requires you to return,
-  and has no `else`. `guard` enters the block if the condition is false, `check` enters
+- `require` and `prevent` that are like `if` except their block requires you to return,
+  and has no `else`. `require` enters the block if the condition is false, `prevent` enters
   if the condition is true.
 - Definitely want a way to insert code directly into enclosing block from a macro.
 - Owning pointer in the type system.
 - Allow notes in strategic places, so that people can implement interesting stuff if they want.
-- Make compiler restructure data to allow for weird padding stuff.
+- Make compiler restructure data to allow for weird padding stuff. Assignment of
+  data never overwrites padding.
 - Overload dot operator like Swift, so it calls a function and passes the member
   name as a string.
 - The swift closure thing. Haven't decided if it will actually be a closure, or
@@ -105,4 +106,25 @@ The following extensions to the language hopefully can be done in the language i
 
 - iterator methods are just for_expansions from jai but without having to make a
   custom type or go through iterator resolution
+- Maybe just say that `a = 12` declares if the variable doesn't exist (in any scope),
+  and assigns otherwise. The `a : s64 = 12` form always declares. Compile-time variables
+  still need to be declared with `a :: 12`
+- Inheritance field can be manually specified, and structs can be abstract if you want
+- First-class bitfield type
+- Compile-time values that contain pointers should probably be unusable from runtime
+  code
+- No laziness in the compiler.
+- `for_now` that lets you assign to something until the end of the scope. Syntax
+  is `for_now a.b.c = 12` and semantics are:
+
+  ```
+  previous := a.b.c;
+  a.b.c = 12;
+  defer a.b.c = previous;
+  ```
+- Assignment overloading might be nice, but we probably shouldn't allow overloading
+  of assigning a value of type `A` to a target of type `A`. If left and right are
+  the same, it's a normal assignment, with normal semantics. Or maybe overloading
+  the assignemnt operator for `A` to `A` gives the type move semantics? At the
+  very least we don't want the whole C++ copy-constructor move-constructor nonsense.
 

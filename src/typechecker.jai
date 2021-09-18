@@ -177,20 +177,24 @@ typechecker_init :: () {
 
 #scope_file
 
+// comptime builtins are things like s64
 builtin_scope : Scope = ---;
 
-search_scope :: (_scope: *Scope, ident: s32, $search_builtin := true) -> *DeclarationIdent {
-    #if search_builtin {
-        decl, success := table_find(builtin_scope.comptime_variables, ident);
-        if success      return decl;
-    }
+search_scope :: (_scope: *Scope, ident: s32, search_runtime := true) -> *DeclarationIdent {
+    decl, success := table_find(builtin_scope.runtime_variables, ident);
+    assert(!success); // @Todo should there be something here?
+
+    decl, success = table_find(builtin_scope.comptime_variables, ident);
+    if success      return decl;
 
     scope := _scope;
     while scope {
-        decl, success := table_find(scope.runtime_variables, ident);
-        if success      return decl;
+        if search_runtime {
+            decl, success := table_find(scope.runtime_variables, ident);
+            if success      return decl;
+        }
 
-        decl, success = table_find(scope.comptime_variables, ident);
+        decl, success := table_find(scope.comptime_variables, ident);
         if success      return decl;
 
         scope = scope.parent;

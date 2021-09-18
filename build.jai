@@ -119,6 +119,7 @@ is_initial_file :: (loc := #caller_location) -> bool {
     out_options.cast_bounds_check = .FATAL;
     out_options.math_bounds_check = .FATAL;
     out_options.import_path = import_path;
+    out_options.dead_code_elimination = .NONE;
 
     if mode == {
     case .EXE;

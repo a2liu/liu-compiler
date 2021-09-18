@@ -8,11 +8,11 @@
 #import "parser";
 #import "typechecker";
 #import "bytecode";
-#import "interpreter";
 #import "utils";
 
 init :: () {
     context.logger = liu_logger;
+
     lexer_init();
     typechecker_init();
 }
@@ -20,7 +20,7 @@ init :: () {
 main :: () {
     init();
 
-    compile(0, "hello : s64 = 12;");
+    run("hello : s64 = 12;");
 }
 
 test :: () {
@@ -28,16 +28,16 @@ test :: () {
 
     for f_info: bfs_visit_files("test", recursive = false) {
         text := read_entire_file(f_info.full_name);
-        result := run(0, text);
+        result := run(text);
         print("test '%' completed with result=%\n", f_info.full_name, result);
     }
 
     print("Tests completed successfully!\n");
 }
 
-run :: (file_id: s32, text: string) -> s64 {
+run :: (text: string) -> s64 {
     symbols := Symbols.make();
-    file := assert_result(parse_file(*symbols, file_id, text));
+    file := assert_result(parse_file(*symbols, 0, text));
 
     for stmt: file.statements {
         for stmt {
@@ -53,7 +53,6 @@ run :: (file_id: s32, text: string) -> s64 {
 
     print("basic block:\n");
     for block {
-        print("%\n", it);
         print("kind: %, next: %, prev: %\n", it.kind, it.next, it.previous);
     }
     print("\n");
