@@ -161,9 +161,10 @@ Lexer :: struct {
 lex_token :: (lexer: *Lexer) -> Result(Token) {
     while true {
         result := lex_raw_token(lexer);
-        if !result.did_succeed      return result;
+        err, token := read(result);
+        if err      return result;
 
-        if result.kind == {
+        if token.kind == {
             case .WHITESPACE;     continue;
             case .LINE_COMMENT;     continue;
             case .BLOCK_COMMENT;    continue;
@@ -174,34 +175,43 @@ lex_token :: (lexer: *Lexer) -> Result(Token) {
 }
 
 lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
-    result := start_result(lexer, Token);
+    begin := lexer.cursor;
     success, char := pop(lexer);
     if !success {
-        result.kind = .EOF;
-        return result;
+        ret(.EOF);
+    }
+
+    ret :: (kind: Token.Kind) #expand {
+        token : Token;
+        token.kind = kind;
+        token.begin = begin;
+        token.end = lexer.cursor;
+        `return ok(token);
+    }
+
+    throw :: (message: string, _cursor : s32 = -1) #expand {
+        cursor := ifx _cursor != -1 then _cursor else `lexer.cursor;
+        span := new_span(cursor, cursor + 1); // @Todo do we wanna support weird UTF-8 stuff?
+        `return error(*span, message);
     }
 
     if char == {
     case #char " "; #through;
     case #char "\t";
-        result.kind = .WHITESPACE;
         while match(lexer, char == #char " " || char == #char "\t") {}
 
-        return result;
+        ret(.WHITESPACE);
 
     case #char "/";
         if match(lexer, #char "*") {
             while true {
                 success, char = pop(lexer);
                 if !success {
-                    result.did_succeed = false;
-                    result.error = "block comments need to end with a '*/'";
-                    return result;
+                    throw("block comments need to end with a '*/'", lexer.cursor - 1);
                 }
 
                 if char == #char "*" && match(lexer, #char "/") {
-                    result.kind = .BLOCK_COMMENT;
-                    return result;
+                    ret(.BLOCK_COMMENT);
                 }
             }
         }
@@ -213,169 +223,141 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
                 if char == #char "\n"   break;
             }
 
-            result.kind = .LINE_COMMENT;
-            return result;
+            ret(.LINE_COMMENT);
         }
 
-        result.kind = .DIVIDE;
-        return result;
+        ret(.DIVIDE);
 
     case #char "\n";
-        result.kind = .NEWLINE;
-        return result;
+        ret(.NEWLINE);
 
     case #char ";";
-        result.kind = .SEMICOLON;
-        return result;
+        ret(.SEMICOLON);
 
     case #char ",";
-        result.kind = .COMMA;
-        return result;
+        ret(.COMMA);
 
     case #char ".";
         if match(lexer, #char ".") {
             if match(lexer, #char "=") {
-                result.kind = .DOT_DOT_EQUAL;
-                return result;
+                ret(.DOT_DOT_EQUAL);
             }
 
-            result.kind = .RANGE;
-            return result;
+            ret(.RANGE);
         }
 
-        result.kind = .DOT;
-        return result;
+        ret(.DOT);
 
     case #char ":";
-        result.kind = .COLON;
-        return result;
+        ret(.COLON);
 
     case #char "=";
         if match(lexer, #char "=") {
-            result.kind = .DOUBLE_EQUALS;
-            return result;
+            ret(.DOUBLE_EQUALS);
         }
 
         if match(lexer, #char ">") {
-            result.kind = .RIGHT_DOUBLE_ARROW;
-            return result;
+            ret(.RIGHT_DOUBLE_ARROW);
         }
 
-        result.kind = .EQUAL_SIGN;
-        return result;
+        ret(.EQUAL_SIGN);
 
     case #char "<"; // @Todo should the lexer try to prevent you from doing stupid stuff
         if match(lexer, #char "=") {
-            result.kind = .LEQ_THAN;
-            return result;
+            ret(.LEQ_THAN);
         }
 
         if match(lexer, #char "-") {
-            result.kind = .LEFT_ARROW;
-            return result;
+            ret(.LEFT_ARROW);
         }
 
         if match(lexer, #char "<") {
-            result.kind = .LEFT_SHIFT;
-            return result;
+            ret(.LEFT_SHIFT);
         }
 
-        result.kind = .LESS_THAN;
-        return result;
+        ret(.LESS_THAN);
 
     case #char ">";
         if match(lexer, #char "=") {
-            result.kind = .GEQ_THAN;
-            return result;
+            ret(.GEQ_THAN);
         }
 
         if match(lexer, #char ">") {
-            result.kind = .RIGHT_SHIFT;
-            return result;
+            ret(.RIGHT_SHIFT);
         }
 
-        result.kind = .GREATER_THAN;
-        return result;
+        ret(.GREATER_THAN);
 
     case #char "~";
-        result.kind = .TILDE;
-        return result;
+        ret(.TILDE);
 
     case #char "!";
         if match(lexer, #char "=") {
-            result.kind = .NOT_EQUAL_SIGN;
-            return result;
+            ret(.NOT_EQUAL_SIGN);
         }
 
-        result.kind = .EXCLAMATION;
-        return result;
+        ret(.EXCLAMATION);
 
     case #char "+";
-        result.kind = .PLUS;
-        return result;
+        ret(.PLUS);
 
     case #char "-";
         if match(lexer, #char ">") {
-            result.kind = .RIGHT_ARROW;
-            return result;
+            ret(.RIGHT_ARROW);
         }
 
         success, value := try_lex_number_literal(lexer);
         if success {
-            result.kind = .INTEGER_LITERAL;
-            result.integer_value = value;
-            result.is_negative = true;
-            return result;
+            token : Token;
+            token.kind = .INTEGER_LITERAL;
+            token.integer_value = value;
+            token.is_negative = true;
+            token.begin = begin;
+            token.end = lexer.cursor;
+            return ok(token);
         }
 
-        result.kind = .MINUS;
-        return result;
+        ret(.MINUS);
 
     case #char "*";
         if match(lexer, #char "*") {
-            result.kind = .DOUBLE_STAR;
-            return result;
+            ret(.DOUBLE_STAR);
         }
 
-        result.kind = .STAR;
-        return result;
+        ret(.STAR);
 
     case #char "%";
-        result.kind = .PERCENT;
-        return result;
+        ret(.PERCENT);
 
     case #char "{";
-        result.kind = .LBRACE;
-        return result;
+        ret(.LBRACE);
     case #char "}";
-        result.kind = .RBRACE;
-        return result;
+        ret(.RBRACE);
 
     case #char "[";
-        result.kind = .LBRACKET;
-        return result;
+        ret(.LBRACKET);
     case #char "]";
-        result.kind = .RBRACKET;
-        return result;
+        ret(.RBRACKET);
 
     case #char "(";
-        result.kind = .LPAREN;
-        return result;
+        ret(.LPAREN);
     case #char ")";
-        result.kind = .RPAREN;
-        return result;
+        ret(.RPAREN);
 
     case #char "\"";
-        return lex_string_literal_after_quote(lexer, result);
+        return lex_string_literal_after_quote(lexer);
     }
 
     value : u64 = ---;
     success, value = lex_number_literal(lexer, char);
     if success {
-        result.kind = .INTEGER_LITERAL;
-        result.integer_value = value;
-        result.is_negative = false;
-        return result;
+        token : Token;
+        token.kind = .INTEGER_LITERAL;
+        token.integer_value = value;
+        token.is_negative = false;
+        token.begin = begin;
+        token.end = lexer.cursor;
+        return ok(token);
     }
 
     match_id_char_begin :: #code (#char "a" <= char && char <= #char "z")
@@ -387,44 +369,28 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
 
     if #insert match_id_char_begin {
         ident_string : string = ---;
-        ident_string.data = lexer.file_data.data + result.begin;
+        ident_string.data = lexer.file_data.data + begin;
         ident_string.count = 1;
 
         while match(lexer, match_id_char)   ident_string.count += 1;
 
         success, keyword_kind := map_find(*keywords, ident_string);
         if success {
-            result.kind = keyword_kind;
-            return result;
+            ret(keyword_kind);
         }
 
-        result.kind = .IDENT;
-        result.ident_symbol = add_symbol(lexer.symbols, ident_string);
-
-        return result;
+        token : Token;
+        token.kind = .IDENT;
+        token.ident_symbol = add_symbol(lexer.symbols, ident_string);
+        token.begin = begin;
+        token.end = lexer.cursor;
+        return ok(token);
     }
 
-    result.did_succeed = false;
-    result.error = "didn't recognize the character";
-
-    return result;
-}
-
-lex_string_literal_after_quote :: inline (lexer: *Lexer, result: Result(Token)) -> Result(Token) {
-    return lex_string_literal_after_quote_(lexer, result);
+    throw("didn't recognize the character", begin);
 }
 
 #scope_file
-
-start_result :: (lexer: *Lexer, $type: Type) -> Result(type) {
-    result : Result(type);
-    result.error = "internal error? result might not have been initialized";
-    result.did_succeed = true;
-    result.begin = lexer.cursor;
-    result.end = lexer.cursor;
-
-    return result;
-}
 
 lex_number_literal :: (lexer: *Lexer, initial: u8) -> bool, u64 #expand {
     if initial < #char "0" || #char "9" < initial     return false, 0;
@@ -432,7 +398,6 @@ lex_number_literal :: (lexer: *Lexer, initial: u8) -> bool, u64 #expand {
 
     while true {
         if lexer.cursor >= lexer.file_data.count {
-            `result.end = lexer.cursor;
             return true, value;
         }
 
@@ -442,18 +407,13 @@ lex_number_literal :: (lexer: *Lexer, initial: u8) -> bool, u64 #expand {
 
         new_value := value * 10 + (char - #char "0");
         if new_value < value {
-            result := `result;
-            result.did_succeed = false;
-            result.error = "value was too big";
-            result.end = lexer.cursor;
-
-            `return result;
+            span := new_span(`begin, lexer.cursor);
+            `return error(*span, "value was too big");
         }
 
         value = new_value;
     }
 
-    `result.end = lexer.cursor;
     return true, value;
 }
 
@@ -462,7 +422,6 @@ try_lex_number_literal :: (lexer: *Lexer) -> bool, u64 #expand {
     found_one := false;
     while true {
         if lexer.cursor >= lexer.file_data.count {
-            `result.end = lexer.cursor;
             return found_one, value;
         }
 
@@ -472,32 +431,30 @@ try_lex_number_literal :: (lexer: *Lexer) -> bool, u64 #expand {
 
         new_value := value * 10 + (char - #char "0");
         if new_value < value {
-            result := `result;
-            result.did_succeed = false;
-            result.error = "value was too big";
-            result.end = lexer.cursor;
-
-            `return result;
+            span := new_span(`begin, lexer.cursor);
+            `return error(*span, "value was too big");
         }
 
         value = new_value;
         found_one = true;
     }
 
-    `result.end = lexer.cursor;
     return found_one, value;
 }
 
-lex_string_literal_after_quote_ :: (lexer: *Lexer, _result: Result(Token)) -> Result(Token) {
-    result := _result;
+lex_string_literal_after_quote :: (lexer: *Lexer) -> Result(Token) #expand {
+    begin := `begin;
     builder := StringBuilder.make();
 
     while true {
         char := expect(lexer, "strings need to end with a double quote -> \"");
         if char == #char "\"" {
-            result.kind = .STRING_LITERAL;
-            result.string_value = to_string(*builder, allocator = __temporary_allocator);
-            return result;
+            token : Token;
+            token.kind = .STRING_LITERAL;
+            token.begin = `begin;
+            token.end = lexer.cursor;
+            token.string_value = to_string(*builder, allocator = __temporary_allocator);
+            return ok(token);
         }
 
         if char != #char "\\" {
@@ -529,7 +486,8 @@ lex_string_literal_after_quote_ :: (lexer: *Lexer, _result: Result(Token)) -> Re
         write(*builder, char);
     }
 
-    return result;
+    span := new_span(`begin, lexer.cursor);
+    return error(*span, "unreachable");
 }
 
 match :: (lexer: *Lexer, to_match: u8) -> bool #expand {
@@ -550,24 +508,18 @@ match :: (lexer: *Lexer, to_match: u8) -> bool #expand {
             lexer.line_offset = 0;
             lexer.cursor += 1;
         } else {
-            result := `result;
-            result.end = lexer.cursor;
-            result.did_succeed = false;
-            result.error = "got '\\r' character in place we weren't expecting";
-
-            `return result;
+            span := new_span(`begin, lexer.cursor);
+            `return error(*span, "got '\\r' character in place we weren't expecting");
         }
     case;
         lexer.line_offset += 1;
     }
 
     if char == to_match {
-        `result.end = lexer.cursor;
         return true;
     }
 
     lexer.cursor = original_cursor;
-    `result.end = lexer.cursor;
     return false;
 }
 
@@ -589,31 +541,24 @@ match :: (lexer: *Lexer, pattern: Code) -> bool #expand {
             lexer.line_offset = 0;
             lexer.cursor += 1;
         } else {
-            result := `result;
-            result.did_succeed = false;
-            result.end = lexer.cursor;
-            result.error = "got '\\r' character in place we weren't expecting";
-
-            `return result;
+            span := new_span(`begin, lexer.cursor);
+            `return error(*span, "got '\\r' character in place we weren't expecting");
         }
     case;
         lexer.line_offset += 1;
     }
 
     if #insert_internal pattern {
-        `result.end = lexer.cursor;
         return true;
     }
 
     lexer.cursor = original_cursor;
-    `result.end = lexer.cursor;
     return false;
 }
 
 pop :: (lexer: *Lexer) -> bool, u8 #expand {
     if lexer.cursor >= lexer.file_data.count    return false, 0;
 
-    result := `result;
     value := lexer.file_data[lexer.cursor];
     lexer.cursor += 1;
 
@@ -628,29 +573,20 @@ pop :: (lexer: *Lexer) -> bool, u8 #expand {
             lexer.line_offset = 0;
             value = #char "\n";
         } else {
-            result.did_succeed = false;
-            result.error = "got '\\r' character in place we weren't expecting";
-            result.end = lexer.cursor;
-
-            `return result;
+            span := new_span(`begin, lexer.cursor);
+            `return error(*span, "got '\\r' character in place we weren't expecting");
         }
     case;
         lexer.line_offset += 1;
     }
 
-    `result.end = lexer.cursor;
     return true, value;
 }
 
 expect :: (lexer: *Lexer, message: string) -> u8 #expand {
-    result := `result;
-
     if lexer.cursor >= lexer.file_data.count {
-        result.did_succeed = false;
-        result.end = lexer.cursor;
-        result.error = message;
-
-        `return result;
+        span := new_span(`begin, lexer.cursor);
+        `return error(*span, message);
     }
 
     value := lexer.file_data[lexer.cursor];
@@ -667,36 +603,34 @@ expect :: (lexer: *Lexer, message: string) -> u8 #expand {
             lexer.line += 1;
             lexer.line_offset = 0;
         } else {
-            result.did_succeed = false;
-            result.end = lexer.cursor;
-            result.error = "got '\\r' character in place we weren't expecting";
-
-            `return result;
+            span := new_span(`begin, lexer.cursor);
+            `return error(*span, "got '\\r' character in place we weren't expecting");
         }
     case;
         lexer.line_offset += 1;
     }
 
-    `result.end = lexer.cursor;
     return value;
 }
 
 peek :: (lexer: *Lexer) -> bool, u8 #expand {
     if lexer.cursor >= lexer.file_data.count    return false, 0;
 
-    result := `result;
     value := lexer.file_data[lexer.cursor];
     if value == #char "\r" {
         if lexer.cursor < lexer.file_data.count && lexer.file_data[lexer.cursor + 1] == #char "\n" {
             value = #char "\n";
         } else {
-            result.did_succeed = false;
-            result.end = lexer.cursor;
-            result.error = "got '\\r' character in place we weren't expecting";
-
-            `return result;
+            span := new_span(`begin, lexer.cursor);
+            `return error(*span, "got '\\r' character in place we weren't expecting");
         }
     }
 
     return true, value;
 }
+
+error :: (value: *$T/interface Span, message: string, loc := #caller_location) -> Result(Token) {
+    return Liu.error(value, message, loc = loc, success_type = Token);
+}
+
+Liu :: #import "liu";

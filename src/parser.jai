@@ -2,7 +2,8 @@
 Math :: #import "Math";
 
 #import "liu";
-Liu :: #import "liu";
+#import "ast";
+Ast :: #import "ast";
 #import "buckets";
 #import "lexer";
 #import "utils";
@@ -25,9 +26,6 @@ Parser :: struct {
                 break;
         }
 
-        result.begin = -1;
-        result.end = -1;
-
         return result;
     }
 
@@ -49,21 +47,14 @@ for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
 
     for enclose_result: enclosed(.EOF, .NEWLINE, .SEMICOLON) {
         for run_body: named_break {
-            if !enclose_result.did_succeed {
-                it.did_succeed = false;
-                it.begin = enclose_result.begin;
-                it.end = enclose_result.end;
-                it.error = enclose_result.error;
-                #if LIU_DEBUG      it.stack_trace = enclose_result.stack_trace;
-
+            err := read(enclose_result);
+            if err {
+                it = error(err, success_type = *Expr);
                 break run_body;
             }
 
             if extra_exprs_cursor < extra_exprs.count {
-                it.did_succeed = true;
-                it.value = extra_exprs[extra_exprs_cursor];
-                it.begin = it.value.begin;
-                it.end = it.value.end;
+                it = ok(extra_exprs[extra_exprs_cursor]);
                 extra_exprs_cursor += 1;
                 break run_body;
             }
@@ -86,12 +77,13 @@ parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*Fi
     defer Parser.free(parser);
 
     buckets := BucketList.make();
-    file := Liu.Buck(FileExpr, buckets = *buckets);
+    file := Ast.Buck(FileExpr, buckets = *buckets);
     file.file_id = file_id;
     file.buckets = buckets;
     use_tree(file);
 
-    result = start_result(*FileExpr);
+    begin : s32;
+    begin, result = start_parse(*FileExpr);
 
     file_statements : [..] *Expr;
     defer array_free(file_statements);
@@ -113,7 +105,7 @@ parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*Fi
 // On success, returns data through `additional`, and return value contains first
 // value in `additional`. This could probably be a lil cleaner, but meh.
 parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Expr) {
-    result := start_result();
+    begin, result := start_parse();
 
     // simple declarations
     success, matches := match(.IDENT, .COLON);
@@ -171,7 +163,7 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
 // Expressions that can be assigned to a value without parens, but can't be in a
 // larger expression without parens. i.e. blocks or control flow stuff
 parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result();
+    begin, result := start_parse();
 
     // control flow
     // @Todo
@@ -219,14 +211,14 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
 }
 
 parse_binary_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result();
+    begin, result := start_parse();
     expr := unwrap(parse_binary_expr(parser, 0));
     ret(expr);
 }
 
 // binary expressions, like a + b + c + d
 parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
-    result := start_result();
+    begin, result := start_parse();
 
     expr := unwrap(parse_unary_expr(parser));
 
@@ -262,7 +254,7 @@ parse_binary_expr :: (parser: *Parser, min_precedence : s64) -> Result(*Expr) {
 
 // infix and postfix expressions, like *a[1], a.b.c[13](12)
 parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result();
+    begin, result := start_parse();
 
     // parse prefix recursively
     // @Todo
@@ -319,7 +311,7 @@ parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
 
 // Atoms like 12, begin, (12 + 13)
 parse_atom :: (parser: *Parser) -> Result(*Expr) {
-    result := start_result();
+    begin, result := start_parse();
 
     success, matches := match(.IDENT);
     if success {
@@ -424,8 +416,6 @@ check_keyword_binary_operands :: ($self: Expr.Kind, left: *Expr, right: *Expr) -
     if right.kind != self && is_keyword(right.kind) && !(right.syntax_flags & .PARENTHESIZED)
         throw(right, message);
 
-    result.begin = -1;
-    result.end = -1;
     return result;
 }
 
@@ -517,65 +507,34 @@ binary_operator_info :: (parser: *Parser, kind: Token.Kind) -> bool, BinaryExprI
 }
 
 unwrap :: (result: Result(void)) #expand {
-    if !result.did_succeed {
-        outer_result := `result;
-        outer_result.did_succeed = false;
-        outer_result.begin = result.begin;
-        outer_result.end = result.end;
-        outer_result.error = result.error;
-        #if LIU_DEBUG      outer_result.stack_trace = result.stack_trace;
-
-        `return outer_result;
+    err := read(result);
+    if err {
+        `return error(err, success_type = `result.Value);
     }
-
-    `result.end = max(`result.end, result.end);
 }
 
 unwrap :: (result: Result($T)) -> T #expand {
-    if !result.did_succeed {
-        outer_result := `result;
-        outer_result.did_succeed = false;
-        outer_result.begin = result.begin;
-        outer_result.end = result.end;
-        outer_result.error = result.error;
-        #if LIU_DEBUG      outer_result.stack_trace = result.stack_trace;
-
-        `return outer_result;
+    err, value := read(result);
+    if err {
+        `return error(err, success_type = `result.Value);
     }
 
-    `result.end = max(`result.end, result.end);
-    return result.value;
+    return value;
 }
 
 ret :: (expr: *Expr) #expand {
-    result : Result(*Expr) = `result;
-    result.value = expr;
-    result.begin = expr.begin;
-    result.end = expr.end;
-
-    `return result;
+    `return ok(expr);
 }
 
-throw :: (value: *$T/interface Spanned, message: string, loc := #caller_location) #expand {
-    result := `result;
-    result.begin = value.begin;
-    result.end = value.end;
-    result.did_succeed = false;
-    result.error = message;
-    #if LIU_DEBUG {
-        result.stack_trace = pack_stack_trace();
-        result.stack_trace[0].line_number = cast(u32) loc.line_number;
-    }
-
-    `return result;
+throw :: (value: *$T/interface Span, message: string, loc := #caller_location) #expand {
+    `return error(value, message, success_type = `result.Value);
 }
 
-start_result :: ($T : Type = *Expr) -> Result(T) #expand {
+start_parse :: ($T : Type = *Expr) -> s32, Result(T) #expand {
     parser : void;
     p := `parser;
 
     result : Result(T);
-    result.error = "internal error? result might not have been initialized";
 
     if should_skip_newlines(p) {
         while p.cursor < p.tokens.count {
@@ -587,10 +546,7 @@ start_result :: ($T : Type = *Expr) -> Result(T) #expand {
         }
     }
 
-    result.begin = p.tokens[p.cursor].begin;
-    result.end = result.begin;
-
-    return result;
+    return p.tokens[p.cursor].begin, result;
 }
 
 peek :: () -> *Token #expand {
@@ -604,7 +560,6 @@ peek :: () -> *Token #expand {
             continue;
         }
 
-       `result.end = token.end;
        return token;
     }
 }
@@ -620,7 +575,6 @@ pop :: () -> *Token #expand {
             continue;
         }
 
-        `result.end = token.end;
         return token;
     }
 }
@@ -653,7 +607,6 @@ match :: (to_match: .. Token.Kind) -> bool, [] Token #expand {
             tokens.count = to_match.count;
 
             p.cursor = cursor;
-            `result.end = p.tokens[p.cursor - 1].end;
             return true, tokens;
         }
     }
@@ -738,18 +691,10 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
             if iter.consume_stop        p.cursor += 1;
             break;
         } else if !had_separator {
-            it.begin = token.begin;
-            it.end = token.end;
-            it.did_succeed = false;
-            it.error = "missing separator between end of previous expression and beginning of next one";
-            #if LIU_DEBUG {
-                it.stack_trace = pack_stack_trace();
-                it.stack_trace[0].line_number = cast(u32) iter.location.line_number;
-            }
+            message := "missing separator between end of previous expression and beginning of next one";
+            it = error(token, message, loc = iter.location);
         } else {
-            it.did_succeed = true;
-            it.begin = -1;
-            it.end = -1;
+            it = ok();
         }
 
         for look_for_separator: named_break {
@@ -780,9 +725,12 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
 }
 
 Buck :: ($T: Type) -> *T #expand {
-    expr := Liu.Buck(T);
-    expr.begin = `result.begin;
-    expr.end = `result.end;
+    parser: void;
+    p := `parser;
+
+    expr := Ast.Buck(T);
+    expr.begin = `begin;
+    expr.end = p.tokens[p.cursor].end;
     return expr;
 }
 

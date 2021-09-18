@@ -2,6 +2,7 @@
 #import "Hash_Table";
 
 #import "liu";
+#import "ast";
 
 Scope :: struct {
     comptime_variables : Table(s32, *DeclarationIdent);
@@ -54,10 +55,10 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType) 
     assert(value_type != UNSPECIFIED_TYPE);
 
     if target == value_type
-        return success(target);
+        return ok(target);
 
     if target == UNSPECIFIED_TYPE
-        return success(value_type);
+        return ok(value_type);
 
     return error(node, "type mismatch", success_type = LiuType);
 }
@@ -157,7 +158,7 @@ as_type_expr :: (expr: *Expr) -> Result(LiuType) {
     assert((expr.type_flags & .IS_TYPED) != 0, "expr at [%,%] wasn't typed!", expr.begin, expr.end);
 
     if expr.type_flags & .TYPE_SLOT_IS_VALUE
-        return success(expr.type_slot);
+        return ok(expr.type_slot);
 
     return error(expr, "the value here needs to be a type", success_type = LiuType);
 }
@@ -204,39 +205,35 @@ search_scope :: (_scope: *Scope, ident: s32, search_runtime := true) -> *Declara
 }
 
 ret :: () #expand {
-    `return success();
+    `return ok();
 }
 
 ret :: (expr: *Expr, type: LiuType) #expand {
     set_type(expr, type);
 
-    `return success();
+    `return ok();
 }
 
 ret_type :: (expr: *Expr, type: LiuType) #expand {
     set_type_as_value(expr, type);
 
-    `return success();
+    `return ok();
 }
 
-throw :: (value: *$T/interface Spanned, message: string, loc := #caller_location) #expand {
+throw :: (value: *$T/interface Span, message: string, loc := #caller_location) #expand {
     `return error(value, message, loc = loc);
 }
 
 unwrap :: (result: Result(LiuType)) -> LiuType #expand {
-    if !result.did_succeed {
-        res := result;
-        `return error(*res, result.error);
-    }
+    err, success := read(result);
+    if err      `return error(err);
 
-    return result.value;
+    return success;
 }
 
 unwrap :: (result: Result(void)) #expand {
-    if !result.did_succeed {
-        res := result;
-        `return error(*res, result.error);
-    }
+    err := read(result);
+    if err      `return error(err);
 }
 
 set_type :: inline (value : *Expr, ty: LiuType) {

@@ -1,5 +1,6 @@
 #import "Basic";
 #import "liu";
+#import "ast";
 
 // Yeah so we're just gonna flagrantly copy LLVM IR for the most part. No SSA or whatever,
 // and block parameters instead of phi stuff. Blocks can read registers from their
@@ -247,7 +248,7 @@ bb_alloc :: (bb: *BasicBlock, $T: Type) -> *T {
     return pointer;
 }
 
-alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Spanned) -> *T {
+alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Span) -> *T {
     #assert(inherits_from(T, Opcode));
 
     output := bb_alloc(bb, T);

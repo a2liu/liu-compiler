@@ -4,6 +4,7 @@
 #import "files";
 
 #import "liu";
+#import "ast";
 #import "lexer";
 #import "parser";
 #import "typechecker";
@@ -63,20 +64,21 @@ run :: (text: string) -> s64 {
 }
 
 assert_result :: (res: Result($T)) -> T {
-    if res.did_succeed
-        return res.value;
+    err, value := read(res);
+    if err {
+        log("[%,%]: %", err.begin, err.end, err.message);
+        #if LIU_DEBUG { print_stack_trace(*err.stack_trace[0]); }
+        exit(1);
+    }
 
-    log("[%,%]: %", res.begin, res.end, res.error);
-    #if LIU_DEBUG { print_stack_trace(*res.stack_trace[0]); }
-    exit(1);
-    return res.value;
+    return value;
 }
 
 assert_result :: (res: Result(void)) {
-    if res.did_succeed
-        return;
-
-    log("[%,%]: %", res.begin, res.end, res.error);
-    #if LIU_DEBUG { print_stack_trace(*res.stack_trace[0]); }
-    exit(1);
+    err := read(res);
+    if err {
+        log("[%,%]: %", err.begin, err.end, err.message);
+        #if LIU_DEBUG { print_stack_trace(*err.stack_trace[0]); }
+        exit(1);
+    }
 }
