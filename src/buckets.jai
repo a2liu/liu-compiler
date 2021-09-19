@@ -115,7 +115,5 @@ align_up :: (value: s64) -> s64 {
 
 align_cost :: (ptr: *void) -> s64 {
     value := cast(s64) ptr;
-    misalignment := value - (value & (~7));
-    if misalignment == 0        return 0;
-    return 8 - misalignment;
+    return align_up(value) - value;
 }
