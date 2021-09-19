@@ -127,4 +127,7 @@ The following extensions to the language hopefully can be done in the language i
   the same, it's a normal assignment, with normal semantics. Or maybe overloading
   the assignemnt operator for `A` to `A` gives the type move semantics? At the
   very least we don't want the whole C++ copy-constructor move-constructor nonsense.
+- Three reference types, pointer, array_view, and reference. Reference and array_view
+  are nonnullable, pointer is not. Pointer allows addition and dereference (but no subscript),
+  array_view allows subscript, reference allows dereference.
 
