@@ -58,7 +58,7 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
             new_subscript.arguments = array_copy(subscript.arguments);
 
         // Binary op
-        case .ADD;             #through;
+        case .ADD;              #through;
         case .MINUS;            #through;
         case .MULTIPLY;         #through;
         case .DIVIDE;           #through;
