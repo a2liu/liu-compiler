@@ -16,14 +16,14 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
     // something in to-space
     for file {
         Copy :: (original: *$T) -> *T #expand {
-            push_allocator(bucket_allocator, *`buckets);
             new_obj := New(T, initialized = false);
             memcpy(new_obj, original, size_of(T));
             table_set(*translations, cast(u64) original, new_obj);
             return new_obj;
         }
 
-        if it.kind == { // @Todo add #complete to this
+        push_allocator(bucket_allocator, *buckets);
+        if it.kind == {
         case .UNINITIALIZED;
             assert(false, "found uninitialized node");
 
@@ -88,7 +88,7 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
     }
 
     // fix up references
-    for ast_dfs(file, insertion_style = .VISIT_INSERTED) {
+    for ast_dfs(file, insertion_style = .INSERT_AND_VISIT_INSERTED) {
         new_pointer, success := table_find(translations, cast(u64) it);
         assert(success, "we missed a node (kind=%)", it.kind);
         assert(new_pointer != null, "we allocated a null pointer?");

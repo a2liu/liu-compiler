@@ -42,6 +42,7 @@ Expr :: struct {
         FILE;
 
         // statement expression
+        // COMPTIME_DECLARATION;
         DECLARATION;
         DECLARATION_IDENT;
         // a, b, c := 12, 13, 14
@@ -87,8 +88,8 @@ Expr :: struct {
     }
 
     SyntaxFlags :: enum_flags u8 {
-        // COMPTIME_DECLARATION;
         PARENTHESIZED;
+        // LOCKED; // This node is not thread safe and has someone operating on it.
     }
 
     kind : Kind = .UNINITIALIZED;
@@ -209,7 +210,7 @@ IdentExpr :: struct {
 DeclarationIdent :: struct {
     using _base : IdentExprBase;
     _base.kind = .DECLARATION_IDENT;
-    file_id : s32;
+    file_id : s32 = -1;
     bytecode_register : s32 = -1;
 }
 
@@ -282,8 +283,8 @@ AstDfs :: struct {
 
     InsertionStyle :: enum {
         NO_INSERT;
-        VISIT_ORIGINAL;
-        VISIT_INSERTED;
+        INSERT_AND_VISIT_ORIGINAL;
+        INSERT_AND_VISIT_INSERTED;
     }
 }
 
@@ -299,12 +300,12 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
         level: s64;
     }
 
-    visit :: (exprs: .. Any) #expand {
-        node := `node;
-        nodes := *`nodes;
+    push_stack :: (nodes: *[..] Node, _node: Node, exprs: .. Any) {
+        node := _node;
         for < arg: exprs {
             if arg.value_pointer == null       continue;
             info := arg.type;
+            assert(info != type_info(Any));
 
             if info == type_info(*Expr) {
                 node.explored_from = cast(**Expr) arg.value_pointer;
@@ -324,6 +325,16 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
                 }
             }
         }
+    }
+
+    visit_child :: (exprs: .. Any) #expand {
+        `defer push_stack(*`nodes, `node, ..exprs);
+    }
+
+    visit_non_child :: (exprs: .. Any) #expand {
+        node := `node;
+        node.level = -1;
+        `defer push_stack(*`nodes, node, ..exprs);
     }
 
     nodes : [..] Node;
@@ -347,7 +358,7 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
             continue;
 
         expr := node.expr;
-        if iter.insertion_style == .VISIT_INSERTED {
+        if iter.insertion_style == .INSERT_AND_VISIT_INSERTED {
             expr = it;
         }
 
@@ -358,27 +369,27 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
 
         case .FILE;
             file := cast(*FileExpr) expr;
-            visit(file.statements);
+            visit_child(file.statements);
 
         case .BLOCK;
             block := cast(*BlockExpr) expr;
-            visit(block.statements);
+            visit_child(block.statements);
 
         case .TUPLE;
             tuple := cast(*TupleExpr) expr;
-            visit(tuple.members);
+            visit_child(tuple.members);
 
         case .DECLARATION;
             decl := cast(*DeclarationExpr) expr;
-            visit(decl.idents, decl.type_declaration_nullable, decl.value_nullable);
+            visit_child(decl.idents, decl.type_declaration_nullable, decl.value_nullable);
 
         case .CALL;
             call := cast(*CallExpr) expr;
-            visit(call.callee, call.arguments);
+            visit_child(call.callee, call.arguments);
 
         case .SUBSCRIPT;
             subscript := cast(*SubscriptExpr) expr;
-            visit(subscript.callee, subscript.arguments);
+            visit_child(subscript.callee, subscript.arguments);
 
         // Binary op
         case .ADD;             #through;
@@ -398,7 +409,7 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
         case .BIT_XOR;          #through;
         case .BIT_AND;
             binary := cast(*BinaryExpr) expr;
-            visit(binary.left, binary.right);
+            visit_child(binary.left, binary.right);
         }
     }
 }

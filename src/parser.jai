@@ -116,6 +116,7 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
         ident.symbol = matches[0].ident_symbol;
         ident.begin = matches[0].begin;
         ident.end = matches[0].end;
+        ident.file_id = context.current_tree.file_id;
         array_add(*idents, ident);
 
         if match(.EQUAL_SIGN) {
