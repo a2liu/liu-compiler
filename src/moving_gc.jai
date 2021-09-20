@@ -95,10 +95,10 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
         it = new_pointer;
     }
 
-    file_expr, success := table_find(translations, cast(u64) file);
+    new_file_expr, success := table_find(translations, cast(u64) file);
     assert(success);
-    assert(file_expr.kind == .FILE);
-    to_file := cast(*FileExpr) file_expr;
+    assert(new_file_expr.kind == .FILE);
+    to_file := cast(*FileExpr) new_file_expr;
     to_file.buckets = buckets;
     return to_file;
 }
