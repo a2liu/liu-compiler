@@ -42,10 +42,15 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
             new_tuple := Copy(tuple);
             new_tuple.members = array_copy(tuple.members);
 
+        case .COMPTIME_DECLARATION; #through;
         case .DECLARATION;
             decl := cast(*DeclarationExpr) it;
             new_decl := Copy(decl);
             new_decl.idents = array_copy(decl.idents);
+
+        case .DECLARATION_IDENT;
+            ident := cast(*DeclarationIdent) it;
+            new_ident := Copy(ident);
 
         case .CALL;
             call := cast(*CallExpr) it;

@@ -42,7 +42,7 @@ Expr :: struct {
         FILE;
 
         // statement expression
-        // COMPTIME_DECLARATION;
+        COMPTIME_DECLARATION;
         DECLARATION;
         DECLARATION_IDENT;
         // a, b, c := 12, 13, 14
@@ -99,6 +99,7 @@ Expr :: struct {
 
     // Flags for when the exprs become typed
     TypeFlags :: enum_flags u16 {
+        CHECKING_IN_PROGRESS;
         IS_TYPED; // for expressions that are done with type checking.
         TYPE_SLOT_IS_VALUE;
     }
@@ -203,7 +204,7 @@ IdentExprBase :: struct {
 IdentExpr :: struct {
     using _base : IdentExprBase;
     _base.kind = .IDENT;
-    declaration : *DeclarationIdent = null; // @Todo what if the reference is in a different file?
+    declaration : *DeclarationIdent = null;
 }
 
 #assert(size_of(IdentExpr) == size_of(DeclarationIdent));

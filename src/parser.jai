@@ -107,45 +107,9 @@ parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*Fi
 parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Expr) {
     begin, result := start_parse();
 
-    // simple declarations
-    success, matches := match(.IDENT, .COLON);
+    success, matches := match(.IF);
     if success {
-        idents : [..] *DeclarationIdent;
-        defer array_free(idents);
-        ident := Buck(DeclarationIdent);
-        ident.symbol = matches[0].ident_symbol;
-        ident.begin = matches[0].begin;
-        ident.end = matches[0].end;
-        ident.file_id = context.current_tree.file_id;
-        array_add(*idents, ident);
-
-        if match(.EQUAL_SIGN) {
-            expr := unwrap(parse_complete_expr(parser));
-
-            decl := Buck(DeclarationExpr);
-            decl.idents = BuckArray(idents);
-            decl.value_nullable = expr;
-
-            ret(decl);
-        }
-
-        ty_expr := unwrap(parse_complete_expr(parser));
-        if match(.EQUAL_SIGN) {
-            expr := unwrap(parse_complete_expr(parser));
-
-            decl := Buck(DeclarationExpr);
-            decl.idents = BuckArray(idents);
-            decl.type_declaration_nullable = ty_expr;
-            decl.value_nullable = expr;
-
-            ret(decl);
-        }
-
-        decl := Buck(DeclarationExpr);
-        decl.idents = BuckArray(idents);
-        decl.type_declaration_nullable = ty_expr;
-
-        ret(decl);
+        throw(*matches[matches.count - 1], "unimplemented");
     }
 
     // its a non-declaration expresion of some kind
@@ -156,6 +120,87 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
 
     // is it a compound declaration?
     // @Todo
+    if match(.COLON) {
+        idents : [] *DeclarationIdent;
+        if expr.kind == {
+        case .TUPLE;
+            tuple := cast(*TupleExpr) expr;
+            idents = cast([] *DeclarationIdent) tuple.members;
+
+            for tuple.members {
+                if it.kind != .IDENT {
+                    throw(it, "this looks like its in a declaration, but its not an name");
+                }
+
+                ident := cast(*DeclarationIdent) it;
+                ident.file_id = context.current_tree.file_id;
+                ident.bytecode_register = -1;
+            }
+
+        case .IDENT;
+            ident := cast(*DeclarationIdent) expr;
+            ident.file_id = context.current_tree.file_id;
+            ident.bytecode_register = -1;
+            idents.data = Buck(*DeclarationIdent);
+            idents.count = 1;
+            idents[0] = ident;
+
+        case;
+            throw(expr, "this looks like its in a declaration, but its not an name or a list of names");
+        }
+
+        if match(.EQUAL_SIGN) {
+            expr := unwrap(parse_complete_expr(parser));
+
+            decl := Buck(DeclarationExpr);
+            decl.idents = idents;
+            decl.value_nullable = expr;
+
+            ret(decl);
+        }
+
+        if match(.COLON) {
+            expr := unwrap(parse_complete_expr(parser));
+
+            decl := Buck(DeclarationExpr);
+            decl.kind = .COMPTIME_DECLARATION;
+            decl.idents = idents;
+            decl.value_nullable = expr;
+
+            ret(decl);
+        }
+
+        ty_expr := unwrap(parse_complete_expr(parser));
+
+        if match(.EQUAL_SIGN) {
+            expr := unwrap(parse_complete_expr(parser));
+
+            decl := Buck(DeclarationExpr);
+            decl.idents = idents;
+            decl.type_declaration_nullable = ty_expr;
+            decl.value_nullable = expr;
+
+            ret(decl);
+        }
+
+        if match(.COLON) {
+            expr := unwrap(parse_complete_expr(parser));
+
+            decl := Buck(DeclarationExpr);
+            decl.kind = .COMPTIME_DECLARATION;
+            decl.idents = idents;
+            decl.type_declaration_nullable = ty_expr;
+            decl.value_nullable = expr;
+
+            ret(decl);
+        }
+
+        decl := Buck(DeclarationExpr);
+        decl.idents = idents;
+        decl.type_declaration_nullable = ty_expr;
+
+        ret(decl);
+    }
 
     array_add(additional, expr);
     ret(expr);
@@ -170,8 +215,7 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
     // @Todo
 
     // Blocks
-    success, matches := match(.LBRACE);
-    if success {
+    if match(.LBRACE) {
         eat_statement_separators();
         block_statements : [..] *Expr;
         defer array_free(block_statements);
@@ -191,7 +235,7 @@ parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
     tuple_exprs : [..] *Expr;
     defer array_free(tuple_exprs);
 
-    stops := Token.Kind.[.NEWLINE, .SEMICOLON, .EQUAL_SIGN, .COLON, .EOF];
+    stops := Token.Kind.[.COLON, .NEWLINE, .SEMICOLON, .EQUAL_SIGN, .EOF];
     for enclosed(parser.enclosing, .COMMA, extra_stops = stops, consume_stop = false) {
         unwrap(it);
         expr := unwrap(parse_binary_expr(parser));
@@ -317,7 +361,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
     success, matches := match(.IDENT);
     if success {
         expr := Buck(IdentExpr);
-        expr.symbol = matches[0].ident_symbol;
+        expr.symbol = matches[matches.count - 1].ident_symbol;
 
         ret(expr);
     }
@@ -730,8 +774,10 @@ Buck :: ($T: Type) -> *T #expand {
     p := `parser;
 
     expr := Ast.Buck(T);
-    expr.begin = `begin;
-    expr.end = p.tokens[p.cursor].end;
+    #if #run has_member(T, "begin", s32)
+        expr.begin = `begin;
+    #if #run has_member(T, "end", s32)
+        expr.end = p.tokens[p.cursor].end;
     return expr;
 }
 

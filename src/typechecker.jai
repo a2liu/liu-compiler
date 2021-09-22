@@ -19,7 +19,8 @@ Scope :: struct {
     }
 }
 
-check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
+check_decl :: (decl_node: *DeclarationExpr, scope: *Scope, comptime := false) -> Result(void) {
+    start_tc(decl_node);
     declared_type : LiuType = UNSPECIFIED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
@@ -65,7 +66,7 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType) 
 }
 
 check_file :: (file: *FileExpr) -> Result(void) {
-    if is_typed(file)       ret();
+    start_tc(file);
     use_tree(file);
 
     global_scope := Scope.make();
@@ -75,7 +76,7 @@ check_file :: (file: *FileExpr) -> Result(void) {
 }
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
-    if is_typed(block)       ret();
+    start_tc(block);
 
     scope := Scope.make();
     unwrap(check_scope(block.statements, *scope));
@@ -93,7 +94,7 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
 }
 
 check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) -> Result(void) {
-    if is_typed(expr)       ret();
+    start_tc(expr);
 
     if expr.kind == {
     case .UNINITIALIZED;
@@ -235,13 +236,24 @@ unwrap :: (result: Result(void)) #expand {
     if err      `return error(err);
 }
 
+start_tc :: (value: *$T) -> bool #expand {
+    if (value.type_flags & .CHECKING_IN_PROGRESS) != 0 {
+        return false;
+    }
+
+    if is_typed(value)       `return ok();
+    value.type_flags |= .CHECKING_IN_PROGRESS;
+    return true;
+}
+
 set_type :: inline (value : *Expr, ty: LiuType) {
     assert(!is_typed(value));
     assert(ty != UNSPECIFIED_TYPE);
 
     value.type_slot.type_id = ty.type_id;
     value.type_slot.pointer_count = ty.pointer_count;
-    value.type_flags = value.type_flags | .IS_TYPED;
+    value.type_flags |= .IS_TYPED;
+    value.type_flags &= ~.CHECKING_IN_PROGRESS;
 }
 
 set_type_as_value :: inline (value : *Expr, ty: LiuType) {
@@ -250,6 +262,7 @@ set_type_as_value :: inline (value : *Expr, ty: LiuType) {
 
     value.type_slot.type_id = ty.type_id;
     value.type_slot.pointer_count = ty.pointer_count;
-    value.type_flags = .IS_TYPED;
+    value.type_flags &= ~.CHECKING_IN_PROGRESS;
+    value.type_flags |= .IS_TYPED;
     value.type_flags |= .TYPE_SLOT_IS_VALUE;
 }

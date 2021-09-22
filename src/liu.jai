@@ -147,11 +147,16 @@ error :: (value: *$T/interface Span, message: string, loc := #caller_location, $
 has_member :: ($T: Type, member_name: string, $ty: Type) -> bool {
     info := type_info(T);
 
+    #if type_of(<< info) == Type_Info_Struct {
     member := get_field(info, member_name);
     if !member      return false;
     if member.type != type_info(ty)    return false;
 
     return true;
+    } else {
+    return false;
+    }
+
 }
 
 inherits_from :: ($ty: Type, $base: Type) -> bool {
