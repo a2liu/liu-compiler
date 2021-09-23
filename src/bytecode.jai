@@ -152,6 +152,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         ret(bb, op);
     }
 
+    assert(false, "% expressions are unimplemented", expr.kind);
     ret();
 }
 

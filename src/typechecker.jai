@@ -20,7 +20,10 @@ Scope :: struct {
 }
 
 check_decl :: (decl_node: *DeclarationExpr, scope: *Scope, comptime := false) -> Result(void) {
-    start_tc(decl_node);
+    success := start_tc(decl_node, assert = false);
+    if !success {
+    }
+
     declared_type : LiuType = UNSPECIFIED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
@@ -144,6 +147,11 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 
         ret(plus, expr_type);
 
+    case .COMPTIME_DECLARATION;
+        decl := cast(*DeclarationExpr) expr;
+        unwrap(check_decl(decl, scope, comptime = true));
+        ret();
+
     case .DECLARATION;
         decl := cast(*DeclarationExpr) expr;
         unwrap(check_decl(decl, scope));
@@ -172,6 +180,13 @@ typechecker_init :: () {
     ident.begin = -1;
     ident.end = -1;
     set_type_as_value(ident, S64_TYPE);
+    table_add(*builtin_scope.comptime_variables, S64_SYMBOL, ident);
+
+    ident = New(DeclarationIdent); // leak-gang
+    ident.symbol = TYPE_SYMBOL;
+    ident.begin = -1;
+    ident.end = -1;
+    set_type_as_value(ident, TYPE_TYPE);
 
     table_add(*builtin_scope.comptime_variables, S64_SYMBOL, ident);
 }
@@ -236,7 +251,9 @@ unwrap :: (result: Result(void)) #expand {
     if err      `return error(err);
 }
 
-start_tc :: (value: *$T) -> bool #expand {
+start_tc :: (value: *$T, $assert : bool) -> bool #expand {
+    #assert(!assert);
+
     if (value.type_flags & .CHECKING_IN_PROGRESS) != 0 {
         return false;
     }
@@ -244,6 +261,14 @@ start_tc :: (value: *$T) -> bool #expand {
     if is_typed(value)       `return ok();
     value.type_flags |= .CHECKING_IN_PROGRESS;
     return true;
+}
+
+start_tc :: (value: *$T, loc := #caller_location) #expand {
+    checking := 0 != (value.type_flags & .CHECKING_IN_PROGRESS);
+    assert(!checking, "already started typechecking on this expression", loc = loc);
+
+    if is_typed(value)       `return ok();
+    value.type_flags |= .CHECKING_IN_PROGRESS;
 }
 
 set_type :: inline (value : *Expr, ty: LiuType) {

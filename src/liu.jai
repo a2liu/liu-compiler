@@ -11,7 +11,7 @@ liu_logger :: (message: string, data: *void, info: Log_Info) {
 UNDERSCORE_SYMBOL : s32 : 0;
 IT_SYMBOL : s32 : 1;
 IDX_SYMBOL : s32 : 2;
-KEYWORD_ARGS_SYMBOL : s32 : 3;
+TYPE_SYMBOL : s32 : 3;
 TRUE_SYMBOL : s32 : 4;
 FALSE_SYMBOL : s32 : 5;
 NONE_SYMBOL : s32 : 6;
@@ -32,7 +32,7 @@ Symbols :: struct {
         assert(UNDERSCORE_SYMBOL == add_symbol(*syms, "_"));
         assert(IT_SYMBOL == add_symbol(*syms, "it"));
         assert(IDX_SYMBOL == add_symbol(*syms, "idx"));
-        assert(KEYWORD_ARGS_SYMBOL == add_symbol(*syms, "keyword_args"));
+        assert(TYPE_SYMBOL == add_symbol(*syms, "type"));
 
         assert(TRUE_SYMBOL == add_symbol(*syms, "true"));
         assert(FALSE_SYMBOL == add_symbol(*syms, "false"));
