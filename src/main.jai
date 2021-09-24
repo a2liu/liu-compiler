@@ -41,11 +41,6 @@ run :: (text: string) -> s64 {
     symbols := Symbols.make();
     file := assert_result(parse_file(*symbols, 0, text));
 
-    file_ : [..] *Expr;
-    for file {
-        array_add(*file_, it);
-    }
-
     print("ast:\n");
     for stmt: file.statements {
         assert(stmt != null);
@@ -56,46 +51,9 @@ run :: (text: string) -> s64 {
     }
     print("\n");
 
+    assert_result(check_file(file));
 
-    file2 := run_gc(file);
-    file2_ : [..] *Expr;
-    array_reserve(*file2_, file_.count);
-    for file2 {
-        array_add(*file2_, it);
-    }
-
-    assert_result(check_file(file2));
-
-    file3 := run_gc(file2);
-    file3_ : [..] *Expr;
-    array_reserve(*file3_, file_.count);
-    for file3 {
-        array_add(*file3_, it);
-    }
-
-    assert_eq(file_.count, file2_.count);
-    assert_eq(file2_.count, file3_.count);
-    for file_ {
-        it2 := file2_[it_index];
-        it3 := file3_[it_index];
-
-        assert(it != null);
-        assert(it2 != null);
-        assert(it3 != null);
-        assert(it != it2);
-        assert(it != it3);
-        assert(it2 != it3);
-
-        assert_eq(it.kind, it2.kind);
-        assert_eq(it2.kind, it3.kind);
-
-        print("kind = %\n", it2.kind);
-        type_of_expr(it2);
-        type_of_expr(it3);
-        assert_eq(type_of_expr(it2), type_of_expr(it3), "kind = %", it2.kind);
-    }
-
-    block := bytecode_file(file3);
+    block := bytecode_file(file);
 
     print("basic block:\n");
     for block {

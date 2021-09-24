@@ -122,6 +122,13 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
 
     case .IDENT;
         ident := cast(*IdentExpr) expr;
+        if is_const(ident) {
+            assert(type_of_expr(ident) == S64_TYPE);
+            op := alloc_op(bb, LiteralS64Op, ident);
+            op.value = ident.const_value.as_s64;
+            ret(bb, op);
+        }
+
         return ident.declaration.bytecode_register;
 
     case .INTEGER;
@@ -134,6 +141,10 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     case .BLOCK;
         block := cast(*BlockExpr) expr;
         bytecode_block(bb, block);
+
+    case .COMPTIME_DECLARATION;
+        ret();
+        assert(false, "COMPTIME_DECLARATION expressions are unimplemented");
 
     case .DECLARATION;
         decl := cast(*DeclarationExpr) expr;
@@ -150,9 +161,11 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         op.left = index_to_op(bb, left);
         op.right = index_to_op(bb, right);
         ret(bb, op);
+
+    case;
+        assert(false, "% expressions are unimplemented", expr.kind);
     }
 
-    assert(false, "% expressions are unimplemented", expr.kind);
     ret();
 }
 

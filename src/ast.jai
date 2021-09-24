@@ -5,10 +5,10 @@
 // @Todo maybe everything under 0 should be a type variable
 // UN_TYPE :: LiuType.{ type_id = -2, pointer_count = 0 };
 // SN_TYPE :: LiuType.{ type_id = -1, pointer_count = 0 };
-UNSPECIFIED_TYPE :: LiuType.{ type_id = 0, pointer_count = 0 };
-NONE_TYPE :: LiuType.{ type_id = 1, pointer_count = 0 };
-S64_TYPE :: LiuType.{ type_id = 2, pointer_count = 0 };
-TYPE_TYPE :: LiuType.{ type_id = 3, pointer_count = 0 };
+UNSPECIFIED_TYPE :: LiuType.{ type_id = 0};
+NONE_TYPE :: LiuType.{ type_id = 1 };
+S64_TYPE :: LiuType.{ type_id = 2 };
+TYPE_TYPE :: LiuType.{ type_id = 3 };
 
 // CASED_UN_TYPE :: #run cased(UN_TYPE);
 // CASED_SN_TYPE :: #run cased(SN_TYPE);
@@ -18,21 +18,15 @@ CASED_S64_TYPE :: #run cased(S64_TYPE);
 CASED_TYPE_TYPE :: #run cased(TYPE_TYPE);
 
 LiuType :: struct {
-    type_id : s32 = 0;
-    pointer_count : u8 = 0;
+    type_id : s32;
 }
 
-cased :: (liu_type: LiuType) -> s64 {
-    out : union { ty: LiuType; value: s64; } = ---;
-    out.value = 0;
-    out.ty.type_id = liu_type.type_id;
-    out.ty.pointer_count = liu_type.pointer_count;
-
-    return out.value;
+cased :: (liu_type: LiuType) -> s32 {
+    return liu_type.type_id;
 }
 
 operator == :: inline (left: LiuType, right: LiuType) -> bool {
-    return (left.type_id == right.type_id) & (left.pointer_count == right.pointer_count);
+    return left.type_id == right.type_id;
 }
 
 Expr :: struct {
@@ -92,45 +86,55 @@ Expr :: struct {
         // LOCKED; // This node is not thread safe and has someone operating on it.
     }
 
-    kind : Kind = .UNINITIALIZED;
-    syntax_flags : SyntaxFlags = 0;
-    begin : s32;
-    end : s32;
-
     // Flags for when the exprs become typed
-    TypeFlags :: enum_flags u16 {
+    TypeFlags :: enum_flags u8 {
+        // this prevents circular dependencies for single-threaded comptime
+        // execution. Could it also prevent deadlocking for multi-threaded
+        // execution?
         CHECKING_IN_PROGRESS;
+
         IS_TYPED; // for expressions that are done with type checking.
-        TYPE_SLOT_IS_VALUE;
+        IS_CONST; // for expressions that have a valid constant value
     }
 
-    // @Todo we could potentially try to pack in a pointer to a constant value
-    // well. Although maybe at that point its not worth it.
-    type_slot : LiuType = UNSPECIFIED_TYPE;
-    #place type_slot;
-    do_not_used_s32 : s32 = ---;
-    do_not_used_u8 : u8 = ---;
-    padding_u8 : u8 = ---; // @Todo we can use these for flags
-    type_flags : TypeFlags = 0;
+    ConstantValue :: union {
+        as_s64 : s64 = 0;
+        as_type : LiuType = ---;
+    }
+    #assert(size_of(ConstantValue) == 8);
 
-    // These bois make sure that nothing fishy happens to LiuType, because we use its padding for data
-    #assert(size_of(LiuType) == 8);
-    #assert(type_info(LiuType).members.count == 2);
-    #assert(has_field_at_index(LiuType, s32, 0));
-    #assert(has_field_at_index(LiuType, u8, 1));
+    kind : Kind = .UNINITIALIZED;
+    syntax_flags : SyntaxFlags = 0;
+    type_flags : TypeFlags = 0;
+    begin : s32;
+    end : s32;
+    type := UNSPECIFIED_TYPE;
+    const_value : ConstantValue;
 }
 
 is_typed :: (expr: *Expr, loc := #caller_location) -> bool {
     assert(expr != null, "expression was null", loc = loc);
-    return ((expr.type_flags & .IS_TYPED) != 0) && (expr.type_slot != UNSPECIFIED_TYPE);
+
+    if (expr.type_flags & .IS_TYPED) != 0 {
+        assert(expr.type != UNSPECIFIED_TYPE);
+        return true;
+    }
+
+    return false;
+}
+
+is_const :: (expr: *Expr, loc := #caller_location) -> bool {
+    assert(expr != null, "expression was null", loc = loc);
+    if !is_typed(expr)
+        return false;
+
+    return (expr.type_flags & .IS_CONST) != 0;
 }
 
 type_of_expr :: (expr: *Expr, loc := #caller_location) -> LiuType {
     assert(is_typed(expr), "type_of_expr requires expression to be typed (type_flags=%)", expr.type_flags, loc = loc);
-    if expr.type_flags & .TYPE_SLOT_IS_VALUE
-        return TYPE_TYPE;
 
-    return expr.type_slot;
+    return expr.type;
 }
 
 BinaryExpr :: struct {
@@ -252,9 +256,7 @@ Buck :: ($T: Type, buckets : *BucketList = null) -> *T {
 BuckArray :: (array: [] $T) -> [] T {
     assert(context.current_tree != null);
     push_allocator(bucket_allocator, *context.current_tree.buckets);
-    out : [] T = NewArray(array.count, T, initialized = false);
-    memcpy(out.data, array.data, array.count * size_of(T));
-    return out;
+    return array_copy(array);
 }
 
 for_expansion :: (iter: *Expr, body: Code, flags: For_Flags) #expand {
@@ -379,6 +381,10 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
         case .TUPLE;
             tuple := cast(*TupleExpr) expr;
             visit_child(tuple.members);
+
+        case .COMPTIME_DECLARATION;
+            decl := cast(*DeclarationExpr) expr;
+            visit_child(decl.idents, decl.type_declaration_nullable, decl.value_nullable);
 
         case .DECLARATION;
             decl := cast(*DeclarationExpr) expr;

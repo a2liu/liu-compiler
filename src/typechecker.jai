@@ -1,11 +1,17 @@
 #import "Basic";
 #import "Hash_Table";
 
+#import "buckets";
 #import "liu";
 #import "ast";
 
 Scope :: struct {
-    comptime_variables : Table(s32, *DeclarationIdent);
+    ComptimeDecl :: struct {
+        decl: *DeclarationExpr;
+        index: s64;
+    }
+
+    comptime_variables : Table(s32, ComptimeDecl);
     runtime_variables : Table(s32, *DeclarationIdent);
     parent: *Scope = null;
 
@@ -19,39 +25,49 @@ Scope :: struct {
     }
 }
 
-check_decl :: (decl_node: *DeclarationExpr, scope: *Scope, comptime := false) -> Result(void) {
-    success := start_tc(decl_node, assert = false);
-    if !success {
-    }
-
-    declared_type : LiuType = UNSPECIFIED_TYPE;
+check_decl :: (decl_node: *DeclarationExpr, scope: *Scope,
+               comptime := false) -> Result(void) {
+    declared_type := UNSPECIFIED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
         unwrap(check_expr(type_decl, scope));
         declared_type = unwrap(as_type_expr(type_decl));
     }
 
-    value_type : LiuType = UNSPECIFIED_TYPE;
+    value_type := UNSPECIFIED_TYPE;
     value := decl_node.value_nullable;
     assert(value != null); // @Todo this should probably be allowed
     unwrap(check_expr(value, scope, expected_type = declared_type));
     value_type = type_of_expr(value);
 
-    assert(decl_node.idents.count == 1);
-
     declared_type = unwrap(check_type_transition(decl_node, declared_type, value_type));
+
+    assert(decl_node.idents.count == 1, "haven't implemented multiple variable decls yet");
     ident := decl_node.idents[0];
-    previous, success := table_find(scope.runtime_variables, ident.symbol);
-    if success
+
+    if comptime {
+        set_type(ident, declared_type);
+        if declared_type == TYPE_TYPE {
+            ident.const_value.as_type = unwrap(as_type_expr(value));
+        } else if declared_type == S64_TYPE && value.kind == .INTEGER {
+            literal := cast(*IntegerExpr) value;
+            ident.const_value.as_s64 = literal.value;
+        } else {
+            assert(false);
+        }
+
+        ident.type_flags |= .IS_CONST;
+
+        ret(decl_node, NONE_TYPE);
+    }
+
+    previous, found := table_find(scope.runtime_variables, ident.symbol);
+    if found
         throw(decl_node, "redeclared identifier");
-    assert(previous != null);
 
     // @Todo this needs to change when i add supporting compile-time declarations
     set_type(ident, declared_type);
     table_add(*scope.runtime_variables, ident.symbol, ident);
-
-    // for decl_node.idents {
-    // }
 
     ret(decl_node, NONE_TYPE);
 }
@@ -79,8 +95,6 @@ check_file :: (file: *FileExpr) -> Result(void) {
 }
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
-    start_tc(block);
-
     scope := Scope.make();
     unwrap(check_scope(block.statements, *scope));
 
@@ -89,6 +103,33 @@ check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
 }
 
 check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
+    for stmt: stmts {
+        if stmt.kind != .COMPTIME_DECLARATION       continue;
+
+        // predeclare declaration
+        decl := cast(*DeclarationExpr) stmt;
+
+        assert(decl.idents.count == 1, "haven't implemented multiple variable decls yet");
+        ident := decl.idents[0];
+
+        previous, found := table_find(scope.comptime_variables, ident.symbol);
+        if found
+            throw(decl, "redeclared identifier");
+
+        comptime_decl : Scope.ComptimeDecl;
+        comptime_decl.decl = decl;
+        comptime_decl.index = 0;
+        table_add(*scope.comptime_variables, ident.symbol, comptime_decl);
+    }
+
+    for stmt: stmts { // Compile comptime values first
+        if stmt.kind != .COMPTIME_DECLARATION       continue;
+
+        decl := cast(*DeclarationExpr) stmt;
+        unwrap(check_decl(decl, scope, comptime = true));
+    }
+
+
     for stmt: stmts {
         unwrap(check_expr(stmt, scope));
     }
@@ -117,17 +158,23 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 
     case .IDENT;
         ident := cast(*IdentExpr) expr;
-        decl := search_scope(scope, ident.symbol);
+        decl := unwrap(search_scope(scope, ident.symbol));
         if !decl
             throw(ident, "unrecognized identifier");
 
         ident.declaration = decl;
-        type_value_result := as_type_expr(decl);
-        if type_value_result.did_succeed {
-            ret_type(ident, type_value_result.value);
+        if is_const(decl) {
+            ident.type_flags |= .IS_CONST;
+            ident.const_value = decl.const_value;
+            ret(ident, decl.type);
         }
 
-        ret(ident, type_of_expr(decl));
+        err, type_value := read(as_type_expr(decl));
+        if err {
+            ret(ident, type_of_expr(decl));
+        }
+
+        ret_type(ident, type_value);
 
     case .CALL;
         // @Todo lmao this is totally wrong
@@ -140,16 +187,14 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         plus := cast(*BinaryExpr) expr;
         unwrap(check_expr(plus.left, scope));
         unwrap(check_expr(plus.right, scope));
-        left_ty := type_of_expr(plus.left);
-        right_ty := type_of_expr(plus.right);
-        expr_type := unwrap(check_type_transition(plus.left, expected_type, left_ty));
-        expr_type = unwrap(check_type_transition(plus.left, expr_type, right_ty));
+        left, right := plus.left, plus.right;
+        expr_type := unwrap(check_type_transition(plus.left, expected_type, left.type));
+        expr_type = unwrap(check_type_transition(plus.left, expr_type, right.type));
 
         ret(plus, expr_type);
 
     case .COMPTIME_DECLARATION;
-        decl := cast(*DeclarationExpr) expr;
-        unwrap(check_decl(decl, scope, comptime = true));
+        assert(is_typed(expr));
         ret();
 
     case .DECLARATION;
@@ -163,32 +208,54 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 }
 
 as_type_expr :: (expr: *Expr) -> Result(LiuType) {
-    assert((expr.type_flags & .IS_TYPED) != 0, "expr at [%,%] wasn't typed!", expr.begin, expr.end);
+    if !is_const(expr)
+        return error(expr, "expression isn't constant!", success_type = LiuType);
 
-    if expr.type_flags & .TYPE_SLOT_IS_VALUE
-        return ok(expr.type_slot);
+    if expr.type != TYPE_TYPE
+        return error(expr, "the value here needs to be a type", success_type = LiuType);
 
-    return error(expr, "the value here needs to be a type", success_type = LiuType);
+    return ok(expr.const_value.as_type);
 }
 
 typechecker_init :: () {
     builtin_scope = Scope.make();
-    ident : *DeclarationIdent;
+    buckets := BucketList.make();
 
-    ident = New(DeclarationIdent); // leak-gang
-    ident.symbol = S64_SYMBOL;
-    ident.begin = -1;
-    ident.end = -1;
-    set_type_as_value(ident, S64_TYPE);
-    table_add(*builtin_scope.comptime_variables, S64_SYMBOL, ident);
+    idents : [..] *DeclarationIdent;
+    symbols : [..] s32;
+    defer array_free(idents);
+    defer array_free(symbols);
 
-    ident = New(DeclarationIdent); // leak-gang
-    ident.symbol = TYPE_SYMBOL;
-    ident.begin = -1;
-    ident.end = -1;
-    set_type_as_value(ident, TYPE_TYPE);
+    remember_allocators(*idents);
+    remember_allocators(*symbols);
 
-    table_add(*builtin_scope.comptime_variables, S64_SYMBOL, ident);
+    builtin_type_name :: (symbol: s32, ty: LiuType) #expand {
+        ident := New(DeclarationIdent);
+        ident.symbol = symbol;
+        ident.begin = -1;
+        ident.end = -1;
+        set_type_as_value(ident, ty);
+        array_add(*idents, ident);
+        array_add(*symbols, symbol);
+    }
+
+    push_allocator(bucket_allocator, *buckets);
+
+    builtin_type_name(S64_SYMBOL, S64_TYPE);
+    builtin_type_name(TYPE_SYMBOL, TYPE_TYPE);
+
+    decl := New(DeclarationExpr);
+    decl.idents = array_copy(idents);
+    decl.begin = -1;
+    decl.end = -1;
+    set_type(decl, NONE_TYPE);
+
+    comptime_decl : Scope.ComptimeDecl;
+    comptime_decl.decl = decl;
+    for symbols {
+        comptime_decl.index = it_index;
+        table_add(*builtin_scope.comptime_variables, it, comptime_decl);
+    }
 }
 
 #scope_file
@@ -196,27 +263,32 @@ typechecker_init :: () {
 // comptime builtins are things like s64
 builtin_scope : Scope = ---;
 
-search_scope :: (_scope: *Scope, ident: s32, search_runtime := true) -> *DeclarationIdent {
+search_scope :: (_scope: *Scope, ident: s32, comptime := false) -> Result(*DeclarationIdent) {
     decl, success := table_find(builtin_scope.runtime_variables, ident);
     assert(!success); // @Todo should there be something here?
 
-    decl, success = table_find(builtin_scope.comptime_variables, ident);
-    if success      return decl;
+    comptime_decl : Scope.ComptimeDecl;
+    comptime_decl, success = table_find(builtin_scope.comptime_variables, ident);
+    if success      return ok(comptime_decl.decl.idents[comptime_decl.index]);
 
     scope := _scope;
     while scope {
-        if search_runtime {
+        if !comptime {
             decl, success := table_find(scope.runtime_variables, ident);
-            if success      return decl;
+            if success      return ok(decl);
         }
 
-        decl, success := table_find(scope.comptime_variables, ident);
-        if success      return decl;
+        comptime_decl, success := table_find(scope.comptime_variables, ident);
+        if !is_typed(comptime_decl.decl) {
+            unwrap(check_expr(comptime_decl.decl, scope), success_type = *DeclarationIdent);
+        }
+        if success      return ok(comptime_decl.decl.idents[comptime_decl.index]);
 
         scope = scope.parent;
     }
 
-    return null;
+    out : *DeclarationIdent = null;
+    return ok(out);
 }
 
 ret :: () #expand {
@@ -239,33 +311,27 @@ throw :: (value: *$T/interface Span, message: string, loc := #caller_location) #
     `return error(value, message, loc = loc);
 }
 
-unwrap :: (result: Result(LiuType)) -> LiuType #expand {
+unwrap :: (result: Result($T), $success_type := void) -> T #expand
+#modify {
+    if T == type_info(void) {
+        T = null;
+    }
+}
+{
     err, success := read(result);
-    if err      `return error(err);
+    if err      `return error(err, success_type = success_type);
 
     return success;
 }
 
-unwrap :: (result: Result(void)) #expand {
+unwrap :: (result: Result(void), $success_type := void) #expand {
     err := read(result);
-    if err      `return error(err);
-}
-
-start_tc :: (value: *$T, $assert : bool) -> bool #expand {
-    #assert(!assert);
-
-    if (value.type_flags & .CHECKING_IN_PROGRESS) != 0 {
-        return false;
-    }
-
-    if is_typed(value)       `return ok();
-    value.type_flags |= .CHECKING_IN_PROGRESS;
-    return true;
+    if err      `return error(err, success_type = success_type);
 }
 
 start_tc :: (value: *$T, loc := #caller_location) #expand {
     checking := 0 != (value.type_flags & .CHECKING_IN_PROGRESS);
-    assert(!checking, "already started typechecking on this expression", loc = loc);
+    assert(!checking, "circular dependency detected", loc = loc);
 
     if is_typed(value)       `return ok();
     value.type_flags |= .CHECKING_IN_PROGRESS;
@@ -275,8 +341,7 @@ set_type :: inline (value : *Expr, ty: LiuType) {
     assert(!is_typed(value));
     assert(ty != UNSPECIFIED_TYPE);
 
-    value.type_slot.type_id = ty.type_id;
-    value.type_slot.pointer_count = ty.pointer_count;
+    value.type = ty;
     value.type_flags |= .IS_TYPED;
     value.type_flags &= ~.CHECKING_IN_PROGRESS;
 }
@@ -285,9 +350,9 @@ set_type_as_value :: inline (value : *Expr, ty: LiuType) {
     assert(!is_typed(value));
     assert(ty != UNSPECIFIED_TYPE, "set null as type value %", ty);
 
-    value.type_slot.type_id = ty.type_id;
-    value.type_slot.pointer_count = ty.pointer_count;
+    value.type = TYPE_TYPE;
     value.type_flags &= ~.CHECKING_IN_PROGRESS;
     value.type_flags |= .IS_TYPED;
-    value.type_flags |= .TYPE_SLOT_IS_VALUE;
+    value.type_flags |= .IS_CONST;
+    value.const_value.as_type = ty;
 }
