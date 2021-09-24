@@ -39,9 +39,9 @@ TypeInfo :: struct {
     }
 
     kind := Kind.UNINITIALIZED;
-    defn_file : s32;
-    defn_begin : s32;
-    defn_end : s32;
+    defn_file : s32 = -1;
+    defn_begin : s32 = -1;
+    defn_end : s32 = -1;
 }
 
 TypeInfoProcedure :: struct {

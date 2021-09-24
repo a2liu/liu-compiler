@@ -265,9 +265,11 @@ typechecker_init :: () {
     }
 
     builtin_type :: (sym: LiuType, $T: Type) -> *T {
+        #assert(inherits_from(T, TypeInfo));
         assert_eq(sym.type_id, cast(s32) (_types_array.count + 1));
         ptr := New(T);
         array_add(*_types_array, ptr);
+
         return ptr;
     }
 
