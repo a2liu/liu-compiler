@@ -135,7 +135,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         integer := cast(*IntegerExpr) expr;
         assert(type_of_expr(integer) == S64_TYPE);
         op := alloc_op(bb, LiteralS64Op, integer);
-        op.value = integer.value;
+        op.value = integer.const_value.as_s64;
         ret(bb, op);
 
     case .BLOCK;

@@ -45,7 +45,7 @@ run :: (text: string) -> s64 {
     for stmt: file.statements {
         assert(stmt != null);
         for stmt {
-            print("% ", << it);
+            print("% ", it.kind);
         }
         print("\n");
     }

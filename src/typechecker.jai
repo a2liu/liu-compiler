@@ -46,14 +46,16 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope,
     ident := decl_node.idents[0];
 
     if comptime {
+        if !is_const(value)
+            throw(value, "value used in constant context wasn't a constant");
+
         set_type(ident, declared_type);
         if declared_type == TYPE_TYPE {
             ident.const_value.as_type = unwrap(as_type_expr(value));
-        } else if declared_type == S64_TYPE && value.kind == .INTEGER {
-            literal := cast(*IntegerExpr) value;
-            ident.const_value.as_s64 = literal.value;
+        } else if declared_type == S64_TYPE {
+            ident.const_value.as_s64 = value.const_value.as_s64;
         } else {
-            assert(false);
+            assert(false, "declared type was %", declared_type);
         }
 
         ident.type_flags |= .IS_CONST;
@@ -126,7 +128,10 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
         if stmt.kind != .COMPTIME_DECLARATION       continue;
 
         decl := cast(*DeclarationExpr) stmt;
-        unwrap(check_decl(decl, scope, comptime = true));
+        if !is_typed(decl) {
+            decl.type_flags |= .CHECKING_IN_PROGRESS;
+            unwrap(check_decl(decl, scope, comptime = true));
+        }
     }
 
 
@@ -154,6 +159,7 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 
     case .INTEGER;
         literal := cast(*IntegerExpr) expr;
+        literal.type_flags |= .IS_CONST;
         ret(literal, S64_TYPE);
 
     case .IDENT;
@@ -280,7 +286,9 @@ search_scope :: (_scope: *Scope, ident: s32, comptime := false) -> Result(*Decla
 
         comptime_decl, success := table_find(scope.comptime_variables, ident);
         if !is_typed(comptime_decl.decl) {
-            unwrap(check_expr(comptime_decl.decl, scope), success_type = *DeclarationIdent);
+            comptime_decl.decl.type_flags |= .CHECKING_IN_PROGRESS;
+            result := check_decl(comptime_decl.decl, scope, comptime = true);
+            unwrap(result, success_type = *DeclarationIdent);
         }
         if success      return ok(comptime_decl.decl.idents[comptime_decl.index]);
 

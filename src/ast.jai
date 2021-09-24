@@ -117,6 +117,8 @@ is_typed :: (expr: *Expr, loc := #caller_location) -> bool {
 
     if (expr.type_flags & .IS_TYPED) != 0 {
         assert(expr.type != UNSPECIFIED_TYPE);
+        assert((expr.type_flags & .CHECKING_IN_PROGRESS) == 0);
+
         return true;
     }
 
@@ -190,7 +192,6 @@ SubscriptExpr :: struct {
 IntegerExpr :: struct {
     using _base : Expr;
     _base.kind = .INTEGER;
-    value : s64;
 }
 
 DotAccessExpr :: struct {

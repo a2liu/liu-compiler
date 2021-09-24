@@ -375,10 +375,12 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             if value - 1 > cast(u64) Math.S64_MAX
                 throw(token, "value is too large for s64!");
 
+            s64_value := cast,trunc(s64) (value - 1);
+            s64_value *= -1;
+            s64_value -= 1;
+
             expr := Buck(IntegerExpr);
-            expr.value = cast,trunc(s64) (value - 1);
-            expr.value *= -1;
-            expr.value -= 1;
+            expr.const_value.as_s64 = s64_value;
 
             ret(expr);
         }
@@ -389,7 +391,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
         }
 
         expr := Buck(IntegerExpr);
-        expr.value = cast,trunc(s64) value;
+        expr.const_value.as_s64 = cast,trunc(s64) value;
 
         ret(expr);
     }
