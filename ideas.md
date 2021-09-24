@@ -113,7 +113,7 @@ The following extensions to the language hopefully can be done in the language i
 - First-class bitfield type
 - Compile-time values that contain pointers should probably be unusable from runtime
   code
-- No laziness in the compiler.
+- No lazy typechecking in the compiler.
 - `for_now` that lets you assign to something until the end of the scope. Syntax
   is `for_now a.b.c = 12` and semantics are:
 
@@ -130,4 +130,18 @@ The following extensions to the language hopefully can be done in the language i
 - Three reference types, pointer, array_view, and reference. Reference and array_view
   are nonnullable, pointer is not. Pointer allows addition and dereference (but no subscript),
   array_view allows subscript, reference allows dereference.
+- Fun closure thing for control flow statements as well (except it's not really a closure
+  in those cases)
 
+  ```
+  if a.b() |err| {
+    print(err);
+  }
+
+  while a.b() |err| {
+    print(err);
+  }
+
+  for a.b() |it| {
+  }
+  ```

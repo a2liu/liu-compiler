@@ -1,5 +1,5 @@
-a : s64 : 1876
-int : type : s64
+a :: 1876
+int :: s64
 a : int = a
 b : int = 13
 c := a + b
