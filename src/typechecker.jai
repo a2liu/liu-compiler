@@ -225,7 +225,8 @@ as_type_expr :: (expr: *Expr) -> Result(LiuType) {
 
 typechecker_init :: () {
     builtin_scope = Scope.make();
-    buckets := BucketList.make();
+    _static_buckets = BucketList.make();
+    remember_allocators(*_types_array);
 
     idents : [..] *DeclarationIdent;
     symbols : [..] s32;
@@ -245,7 +246,7 @@ typechecker_init :: () {
         array_add(*symbols, symbol);
     }
 
-    push_allocator(bucket_allocator, *buckets);
+    push_allocator(bucket_allocator, *_static_buckets);
 
     builtin_type_name(S64_SYMBOL, S64_TYPE);
     builtin_type_name(TYPE_SYMBOL, TYPE_TYPE);
@@ -262,12 +263,36 @@ typechecker_init :: () {
         comptime_decl.index = it_index;
         table_add(*builtin_scope.comptime_variables, it, comptime_decl);
     }
+
+    builtin_type :: (sym: LiuType, $T: Type) -> *T {
+        assert_eq(sym.type_id, cast(s32) (_types_array.count + 1));
+        ptr := New(T);
+        array_add(*_types_array, ptr);
+        return ptr;
+    }
+
+    none_type := builtin_type(NONE_TYPE, TypeInfo);
+    none_type.kind = .NONE;
+
+    int_type := builtin_type(S64_TYPE, TypeInfo);
+    int_type.kind = .INTEGER;
+
+    type_type := builtin_type(TYPE_TYPE, TypeInfo);
+    type_type.kind = .TYPE;
 }
 
 #scope_file
 
+operator [] :: (db: type_of(types), ty: LiuType) -> *TypeInfo {
+    assert(ty.type_id > 0);
+    return _types_array[ty.type_id - 1];
+}
+
 // comptime builtins are things like s64
+_static_buckets : BucketList = ---;
 builtin_scope : Scope = ---;
+_types_array : [..] *TypeInfo;
+types : struct {};
 
 search_scope :: (_scope: *Scope, ident: s32, comptime := false) -> Result(*DeclarationIdent) {
     decl, success := table_find(builtin_scope.runtime_variables, ident);

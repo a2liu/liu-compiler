@@ -5,7 +5,7 @@
 // @Todo maybe everything under 0 should be a type variable
 // UN_TYPE :: LiuType.{ type_id = -2, pointer_count = 0 };
 // SN_TYPE :: LiuType.{ type_id = -1, pointer_count = 0 };
-UNSPECIFIED_TYPE :: LiuType.{ type_id = 0};
+UNSPECIFIED_TYPE :: LiuType.{ type_id = 0 };
 NONE_TYPE :: LiuType.{ type_id = 1 };
 S64_TYPE :: LiuType.{ type_id = 2 };
 TYPE_TYPE :: LiuType.{ type_id = 3 };
@@ -27,6 +27,28 @@ cased :: (liu_type: LiuType) -> s32 {
 
 operator == :: inline (left: LiuType, right: LiuType) -> bool {
     return left.type_id == right.type_id;
+}
+
+TypeInfo :: struct {
+    Kind :: enum u8 {
+        UNINITIALIZED;
+        NONE;
+        TYPE;
+        INTEGER;
+        PROCEDURE;
+    }
+
+    kind := Kind.UNINITIALIZED;
+    defn_file : s32;
+    defn_begin : s32;
+    defn_end : s32;
+}
+
+TypeInfoProcedure :: struct {
+    using _base : TypeInfo;
+    _base.kind = .PROCEDURE;
+    return_type : LiuType;
+    params : [] LiuType;
 }
 
 Expr :: struct {

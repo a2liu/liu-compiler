@@ -66,18 +66,6 @@ run :: (text: string) -> s64 {
     return interp_file(*interp, *block);
 }
 
-assert_eq :: inline (left: $T, right: T, message := "left and right are not equal", args: .. Any, loc := #caller_location) {
-    if left == right        return;
-
-    if context.handling_assertion_failure  return;  // Avoid infinite loops.
-    context.handling_assertion_failure = true;
-
-    // We provide 'loc' in case _STACK_TRACE is turned off, but assertion_failed may well
-    // look at the stack trace if it is available.
-    context.assertion_failed(loc, tprint("% != %, %", left, right, tprint(message, ..args)));
-    context.handling_assertion_failure = false;
-} @NoProfile @NoDebug
-
 assert_result :: (res: Result($T)) -> T {
     err, value := read(res);
     if err {
