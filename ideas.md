@@ -13,6 +13,9 @@ b := a + 13 // compile error, name not found
 a := 12
 ```
 
+Should module scopes execute in dependency order instead of sequentially?
+Answer: no.
+
 Enum keyword does the normal enum generation but with some namespace
 manipulation as well
 
@@ -47,6 +50,11 @@ Keyword arguments assign to fields in that argument.
 Typechecking doesn't do opcode generation (unless it makes sense later but right
 now probably not).
 
+Maybe typechecking should be a bunch of different passes? And maybe later we can try
+to make some of them run concurrently. Idk, seems like if the compiler is to be
+extensible, the user should be able to compose different passes. Maybe not though,
+idk. We'll see how much i can fit in a single pass before it becomes unweildy.
+
 Scopes don't do the thing where they automatically become structs or whatever.
 That'll probably be a thing with modules, but that's it.
 
@@ -56,11 +64,16 @@ flow. Like in Python.
 scopes contain information about polymorphic type variables, which get pushed onto
 the typechecker during checking. Or something, idk.
 
+`a : int;` can create a `DefaultExpr` AST node so that there's one less case of
+the value slot being null. In fact, parameter declararations can create `ParameterExpr`
+instread of `DefaultExpr`. Doing so simplifies typechecking a bit, and means
+another field will never be null
+
 ### Big Ideas (Compiler/Language)
 - Small target set (maybe native + bytecode?)
 - bytecode debugger
 - Compiler internals are exposed to language
-- Definitely want a `#metaprogram` directive.
+- Probably want a `#metaprogram` directive. Or maybe just a `build.liu` file?
 - Context struct
 - Jai-like macros
 - Notes are either identifiers or `@(expr)`, where `expr` is an expression evaluated
@@ -83,6 +96,8 @@ The following extensions to the language hopefully can be done in the language i
 - Testing utils, test auto generators
 - Code transformations
 - Smart code diffing
+- Virtual memory is fun. Standard library should use OS-level virtual memory stuff
+  to make stuff simpler and faster and whatnot.
 
 ### Small Ideas (Compiler/Language)
 - `require` and `prevent` that are like `if` except their block requires you to return,
@@ -95,11 +110,11 @@ The following extensions to the language hopefully can be done in the language i
   data never overwrites padding.
 - Overload dot operator like Swift, so it calls a function and passes the member
   name as a string.
-- The swift closure thing. Haven't decided if it will actually be a closure, or
+- The trailing closure thing. Haven't decided if it will actually be a closure, or
   just like a code block, but it does seem like it'd be nice to have.
 
   ```
-  a.b() {
+  a.b() |it| {
     print(it);
   }
   ```
@@ -145,7 +160,17 @@ The following extensions to the language hopefully can be done in the language i
   for a.b() |it| {
   }
   ```
-- `a : int;` can create a `DefaultExpr` AST node so that there's one less case of
-  the value slot being null. In fact, parameter declararations can create `ParameterExpr`
-  instread of `DefaultExpr`. Doing so simplifies typechecking a bit, and means
-  another field will never be null
+- Since inheritance and enums are basically the same thing, make them basically the
+  same thing in this langauge.
+
+  ```
+  a : extends MyClass;
+  ```
+
+  The only problem is that, like, how would we do this? Types would have to go through
+  checking before everything else. Maybe its not worth doing a global type pass
+  for such a feature, and instead we should just support nice metaprogramming for
+  enums so that this can be easier. And maybe when you enum classes in the same
+  inheritance hierarchy together, the result uses the inheritance hierarchy tag
+  instead of making a new one.
+

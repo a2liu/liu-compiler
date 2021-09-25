@@ -123,7 +123,9 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     case .IDENT;
         ident := cast(*IdentExpr) expr;
         if is_const(ident) {
-            assert(type_of_expr(ident) == S64_TYPE);
+            err, expr_type := read(type_of_expr(ident));
+            assert(err == null);
+            assert(expr_type == S64_TYPE);
             op := alloc_op(bb, LiteralS64Op, ident);
             op.value = ident.const_value.as_s64;
             ret(bb, op);
@@ -133,7 +135,9 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
 
     case .INTEGER;
         integer := cast(*IntegerExpr) expr;
-        assert(type_of_expr(integer) == S64_TYPE);
+        err, expr_type := read(type_of_expr(integer));
+        assert(err == null);
+        assert(expr_type == S64_TYPE);
         op := alloc_op(bb, LiteralS64Op, integer);
         op.value = integer.const_value.as_s64;
         ret(bb, op);

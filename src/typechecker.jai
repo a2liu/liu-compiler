@@ -21,30 +21,36 @@ Scope :: struct {
     parent: *Scope = null;
     comptime_capture := false;
 
-    make :: (parent : *Scope = null, comptime := false) -> Scope {
-        scope : Scope;
-
+    _init :: (scope: *Scope, parent : *Scope, comptime : bool) {
         init(*scope.comptime_variables);
         init(*scope.runtime_variables);
         scope.parent = parent;
         scope.comptime_capture = comptime;
-
-        return scope;
     }
+
+    _uninit :: (scope: *Scope) {
+        uninit(*scope.comptime_variables);
+        uninit(*scope.runtime_variables);
+    }
+}
+
+init :: (scope: *Scope, parent : *Scope = null, comptime := false) #expand {
+    Scope._init(scope, parent, comptime);
+
+    `defer Scope._uninit(scope);
 }
 
 ProcScope :: struct {
     using _base : Scope;
     _base.kind = .PROC;
     return_type : LiuType;
+}
 
-    make :: (return_type : LiuType, parent : *Scope = null, comptime := false) -> ProcScope {
-        scope : ProcScope;
-        scope._base = Scope.make(parent, comptime);
-        scope.return_type = return_type;
+init :: (scope: *ProcScope, parent : *Scope, return_type : LiuType, comptime := false) #expand {
+    Scope._init(*scope._base, parent, comptime);
+    scope.return_type = return_type;
 
-        return scope;
-    }
+    `defer Scope._uninit(scope);
 }
 
 check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
@@ -52,7 +58,9 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     declared_type := UNSPECIFIED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
-        type_scope := Scope.make(scope, comptime = true);
+        type_scope : Scope;
+        init(*type_scope, scope, comptime = true);
+
         unwrap(check_expr(type_decl, *type_scope));
         declared_type = unwrap(as_type_expr(type_decl));
     }
@@ -61,9 +69,10 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     value := decl_node.value_nullable;
     // assert(value != null); // @Todo this should probably be allowed, idk
     if value != null {
-        value_scope := Scope.make(scope, comptime);
+        value_scope : Scope;
+        init(*value_scope, scope, comptime);
         unwrap(check_expr(value, *value_scope, expected_type = declared_type));
-        value_type = type_of_expr(value);
+        value_type = unwrap(type_of_expr(value));
     }
 
     declared_type = unwrap(check_type_transition(decl_node, declared_type, value_type));
@@ -119,14 +128,16 @@ check_file :: (file: *FileExpr) -> Result(void) {
     start_tc(file);
     use_tree(file);
 
-    global_scope := Scope.make();
+    global_scope : Scope;
+    init(*global_scope);
     unwrap(check_scope(file.statements, *global_scope));
     set_type(file, VOID_TYPE);
     ret();
 }
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
-    scope := Scope.make(parent_scope);
+    scope : Scope;
+    init(*scope, parent_scope);
     unwrap(check_scope(block.statements, *scope));
 
     set_type(block, VOID_TYPE);
@@ -134,17 +145,17 @@ check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
 }
 
 check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) {
-    params_scope := Scope.make(parent_scope, true); // @Todo get working closures
-    for param: proc_expr.params {
-        unwrap(check_decl(param, *params_scope));
-    }
+    params_scope : Scope;
+    init(*params_scope, parent_scope, true); // @Todo get working closures
+    unwrap(check_scope(cast([] *Expr) proc_expr.params, *params_scope));
 
     // @Todo How do we do parameterized return types? Scan beforehand? Lazy errors?
     // probably scan beforehand.
     unwrap(check_expr(proc_expr.return_type, *params_scope));
     return_type := unwrap(as_type_expr(proc_expr.return_type));
 
-    proc_scope := ProcScope.make(return_type, *params_scope, false);
+    proc_scope : ProcScope;
+    init(*proc_scope, *params_scope, return_type, false);
     unwrap(check_expr(proc_expr.body, *proc_scope));
 
     const_proc(proc_expr, VOID_TYPE);
@@ -216,23 +227,23 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
             throw(ident, "unrecognized identifier");
 
         ident.declaration = decl;
+        decl_type := unwrap(type_of_expr(decl));
         if is_const(decl) {
             ident.type_flags |= .IS_CONST;
             ident.const_value = decl.const_value;
-            ret(ident, decl.type);
         }
 
-        err, type_value := read(as_type_expr(decl));
-        if err {
-            ret(ident, type_of_expr(decl));
-        }
-
-        ret_type(ident, type_value);
+        ret(ident, decl_type);
 
     case .CALL;
         // @Todo lmao this is totally wrong
         call := cast(*CallExpr) expr;
         ret(call, VOID_TYPE);
+
+    case .RETURN;
+        return_expr := cast(*ReturnExpr) expr;
+        unwrap(check_expr(return_expr.value, scope));
+        ret(return_expr, VOID_TYPE);
 
     case .ADD;
         // @Todo this doesn't really scale, nor does it really check whether or
@@ -277,7 +288,15 @@ as_type_expr :: (expr: *Expr) -> Result(LiuType) {
 }
 
 typechecker_init :: () {
-    builtin_scope = Scope.make();
+    // We really need memory debuggers. Use-after-free should be an obvious bug
+    // to catch in debug builds, honestly. Like what the fuck. Just uncommit the
+    // range and set the reserved block to illegal. Like how can this not be solved.
+    // I don't need malloc to be fast in GODDAMN DEBUG BUILDS. FOR FUCKS SAKE
+    // OPERATING SYSTEMS HAVE SUPPORTED THIS SINCE THIS FUCKING INCEPTION OF
+    // VIRTUAL MEMORY. STOP TELLING ME THESE THINGS ARE UNSAFE AND ACTUALLY DO THE
+    // THINGS THAT WOULD MAKE IT SAFE.
+    Scope._init(*builtin_scope, null, true);
+
     _static_buckets = BucketList.make();
     remember_allocators(*_types_array);
 
@@ -295,6 +314,7 @@ typechecker_init :: () {
         ident.begin = -1;
         ident.end = -1;
         set_value(ident, ty);
+        assert(is_typed(ident));
         array_add(*idents, ident);
         array_add(*symbols, symbol);
     }
@@ -306,6 +326,7 @@ typechecker_init :: () {
     builtin_type_name(VOID_SYMBOL, VOID_TYPE);
 
     decl := New(DeclarationExpr);
+    decl.kind = .COMPTIME_DECLARATION;
     decl.idents = array_copy(idents);
     decl.begin = -1;
     decl.end = -1;
@@ -335,6 +356,7 @@ typechecker_init :: () {
 
     type_type := builtin_type(TYPE_TYPE, TypeInfo);
     type_type.kind = .TYPE;
+
 }
 
 #scope_file
@@ -346,9 +368,9 @@ operator [] :: (db: type_of(types), ty: LiuType) -> *TypeInfo {
 
 // comptime builtins are things like s64
 _static_buckets : BucketList = ---;
-builtin_scope : Scope = ---;
 _types_array : [..] *TypeInfo;
 types : struct {};
+builtin_scope : Scope;
 
 search_scope :: (_scope: *Scope, ident: s32) -> Result(*DeclarationIdent) {
     decl, success := table_find(builtin_scope.runtime_variables, ident);
@@ -356,7 +378,10 @@ search_scope :: (_scope: *Scope, ident: s32) -> Result(*DeclarationIdent) {
 
     comptime_decl : Scope.ComptimeDecl;
     comptime_decl, success = table_find(builtin_scope.comptime_variables, ident);
-    if success      return ok(comptime_decl.decl.idents[comptime_decl.index]);
+    if success {
+        decl_ident := comptime_decl.decl.idents[comptime_decl.index];
+        return ok(decl_ident);
+    }
 
     scope := _scope;
     only_comptime := false;
@@ -456,9 +481,9 @@ set_value :: (expr : *Expr, value: LiuType) {
     assert(value != UNSPECIFIED_TYPE, "set null as type expr %", value);
 
     expr.type = TYPE_TYPE;
-    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
     expr.type_flags |= .IS_TYPED;
     expr.type_flags |= .IS_CONST;
+    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
     expr.const_value.as_type = value;
 }
 

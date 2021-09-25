@@ -26,6 +26,7 @@ cased :: (liu_type: LiuType) -> s32 {
 }
 
 operator == :: inline (left: LiuType, right: LiuType) -> bool {
+    // @Todo this only checks for ID equality; will that be a problem in the future?
     return left.type_id == right.type_id;
 }
 
@@ -163,10 +164,13 @@ is_const :: (expr: *Expr, loc := #caller_location) -> bool {
     return (expr.type_flags & .IS_CONST) != 0;
 }
 
-type_of_expr :: (expr: *Expr, loc := #caller_location) -> LiuType {
-    assert(is_typed(expr), "type_of_expr requires expression to be typed (type_flags=%)", expr.type_flags, loc = loc);
+type_of_expr :: (expr: *Expr, loc := #caller_location) -> Result(LiuType) {
+    if !is_typed(expr) {
+        message := sprint("type_of_expr requires expression to be typed (type_flags=%)", expr.type_flags);
+        return error(expr, message, loc = loc, success_type = LiuType);
+    }
 
-    return expr.type;
+    return ok(expr.type);
 }
 
 BinaryExpr :: struct {
