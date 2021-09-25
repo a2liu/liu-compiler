@@ -30,6 +30,7 @@ test :: () {
 
     for f_info: bfs_visit_files("test", recursive = false) {
         text := read_entire_file(f_info.full_name);
+        print("Running test '%' ...\n", f_info.full_name);
         result := run(text);
         print("test '%' completed with result=%\n", f_info.full_name, result);
     }
@@ -39,7 +40,7 @@ test :: () {
 
 run :: (text: string) -> s64 {
     symbols := Symbols.make();
-    file := assert_result(parse_file(*symbols, 0, text));
+    file := assert_result(parse_file(*symbols, 0, text), text);
 
     print("ast:\n");
     for stmt: file.statements {
@@ -51,7 +52,7 @@ run :: (text: string) -> s64 {
     }
     print("\n");
 
-    assert_result(check_file(file));
+    assert_result(check_file(file), text);
 
     block := bytecode_file(file);
 
@@ -66,10 +67,21 @@ run :: (text: string) -> s64 {
     return interp_file(*interp, *block);
 }
 
-assert_result :: (res: Result($T)) -> T {
+assert_result :: (res: Result($T), text: string) -> T {
     err, value := read(res);
     if err {
-        log("[%,%]: %", err.begin, err.end, err.message);
+        line := 1;
+        char_index := 1;
+        for index: 0..(err.begin - 1) {
+            char_index += 1;
+
+            if text[index] == #char "\n" {
+                line += 1;
+                char_index = 1;
+            }
+        }
+
+        log("[%,%]: %", line, char_index, err.message);
         #if LIU_DEBUG { print_stack_trace(*err.stack_trace[0]); }
         exit(1);
     }
@@ -77,10 +89,21 @@ assert_result :: (res: Result($T)) -> T {
     return value;
 }
 
-assert_result :: (res: Result(void)) {
+assert_result :: (res: Result(void), text: string) {
     err := read(res);
     if err {
-        log("[%,%]: %", err.begin, err.end, err.message);
+        line := 1;
+        char_index := 1;
+        for index: 0..(err.begin - 1) {
+            char_index += 1;
+
+            if text[index] == #char "\n" {
+                line += 1;
+                char_index = 1;
+            }
+        }
+
+        log("[%,%]: %", line, char_index, err.message);
         #if LIU_DEBUG { print_stack_trace(*err.stack_trace[0]); }
         exit(1);
     }

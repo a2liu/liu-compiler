@@ -1,0 +1,16 @@
+test()
+
+take_2 :: proc(a: int, b: s64) {
+    a + b
+    return
+}
+
+make :: proc(value: int) s64 {
+    return value + 12
+}
+test :: proc() int {
+    a := make(13)
+    return a + make(14)
+}
+
+int :: s64

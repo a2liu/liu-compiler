@@ -1,7 +1,12 @@
+// TODO make this a lil more complicated once better systems are in place for
+// everything
+
 a :: b
-b :: 1876
-int :: s64
+
 a : int = a
 b : int = 13
 c := a + b
 a + b + c
+
+b :: 1876
+int :: s64

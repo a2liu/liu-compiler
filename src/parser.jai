@@ -38,10 +38,6 @@ for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
     assert(parser.enclosing == .EOF);
     eat_statement_separators();
 
-    extra_exprs : [..] *Expr;
-    extra_exprs_cursor := 0;
-    defer array_free(extra_exprs);
-
     `it : Result(*Expr);
     `it_index : void;
 
@@ -53,15 +49,7 @@ for_expansion :: (parser: *Parser, body: Code, flags: For_Flags) #expand {
                 break run_body;
             }
 
-            if extra_exprs_cursor < extra_exprs.count {
-                it = ok(extra_exprs[extra_exprs_cursor]);
-                extra_exprs_cursor += 1;
-                break run_body;
-            }
-
-            extra_exprs.count = 0;
-            it = parse_statement_expr(parser, *extra_exprs);
-            extra_exprs_cursor = 1;
+            it = parse_statement_expr(parser);
         }
 
         #insert body;
@@ -101,10 +89,7 @@ parse_file :: (symbols: *Symbols, file_id: s32, file_data: string) -> Result(*Fi
 
 // Expressions that cannot be assigned to a value or used in larger expression
 // without parens. Like assignment and variable mutation.
-//
-// On success, returns data through `additional`, and return value contains first
-// value in `additional`. This could probably be a lil cleaner, but meh.
-parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Expr) {
+parse_statement_expr :: (parser: *Parser) -> Result(*Expr) {
     begin, result := start_parse();
 
     success, matches := match(.IF);
@@ -121,89 +106,95 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
     // is it a compound declaration?
     // @Todo
     if match(.COLON) {
-        idents : [] *DeclarationIdent;
-        if expr.kind == {
-        case .TUPLE;
-            tuple := cast(*TupleExpr) expr;
-            idents = cast([] *DeclarationIdent) tuple.members;
+        decl := unwrap(parse_decl_suffix(parser, begin, expr));
+        ret(decl);
+    }
 
-            for tuple.members {
-                if it.kind != .IDENT {
-                    throw(it, "this looks like its in a declaration, but its not an name");
-                }
+    ret(expr);
+}
 
-                ident := cast(*DeclarationIdent) it;
-                ident.file_id = context.current_tree.file_id;
-                ident.bytecode_register = -1;
+// assumes a colon has been parsed already
+parse_decl_suffix :: (parser: *Parser, begin: s32, expr: *Expr) -> Result(*DeclarationExpr) {
+    result : Result(*DeclarationExpr);
+    idents : [] *DeclarationIdent;
+    if expr.kind == {
+    case .TUPLE;
+        tuple := cast(*TupleExpr) expr;
+        idents = cast([] *DeclarationIdent) tuple.members;
+
+        for tuple.members {
+            if it.kind != .IDENT {
+                throw(it, "this looks like its in a declaration, but its not a name");
             }
 
-        case .IDENT;
-            ident := cast(*DeclarationIdent) expr;
+            ident := cast(*DeclarationIdent) it;
             ident.file_id = context.current_tree.file_id;
             ident.bytecode_register = -1;
-            idents.data = Buck(*DeclarationIdent);
-            idents.count = 1;
-            idents[0] = ident;
-
-        case;
-            throw(expr, "this looks like its in a declaration, but its not an name or a list of names");
         }
 
-        if match(.EQUAL_SIGN) {
-            expr := unwrap(parse_complete_expr(parser));
+    case .IDENT;
+        ident := cast(*DeclarationIdent) expr;
+        ident.file_id = context.current_tree.file_id;
+        ident.bytecode_register = -1;
+        idents.data = Buck(*DeclarationIdent);
+        idents.count = 1;
+        idents[0] = ident;
 
-            decl := Buck(DeclarationExpr);
-            decl.idents = idents;
-            decl.value_nullable = expr;
+    case;
+        throw(expr, "this looks like its in a declaration, but its not an name or a list of names");
+    }
 
-            ret(decl);
-        }
+    if match(.EQUAL_SIGN) {
+        expr := unwrap(parse_complete_expr(parser));
 
-        if match(.COLON) {
-            expr := unwrap(parse_complete_expr(parser));
+        decl := Buck(DeclarationExpr);
+        decl.idents = idents;
+        decl.value_nullable = expr;
 
-            decl := Buck(DeclarationExpr);
-            decl.kind = .COMPTIME_DECLARATION;
-            decl.idents = idents;
-            decl.value_nullable = expr;
+        return ok(decl);
+    }
 
-            ret(decl);
-        }
+    if match(.COLON) {
+        expr := unwrap(parse_complete_expr(parser));
 
-        ty_expr := unwrap(parse_complete_expr(parser));
+        decl := Buck(DeclarationExpr);
+        decl.kind = .COMPTIME_DECLARATION;
+        decl.idents = idents;
+        decl.value_nullable = expr;
 
-        if match(.EQUAL_SIGN) {
-            expr := unwrap(parse_complete_expr(parser));
+        return ok(decl);
+    }
 
-            decl := Buck(DeclarationExpr);
-            decl.idents = idents;
-            decl.type_declaration_nullable = ty_expr;
-            decl.value_nullable = expr;
+    ty_expr := unwrap(parse_complete_expr(parser));
 
-            ret(decl);
-        }
-
-        if match(.COLON) {
-            expr := unwrap(parse_complete_expr(parser));
-
-            decl := Buck(DeclarationExpr);
-            decl.kind = .COMPTIME_DECLARATION;
-            decl.idents = idents;
-            decl.type_declaration_nullable = ty_expr;
-            decl.value_nullable = expr;
-
-            ret(decl);
-        }
+    if match(.EQUAL_SIGN) {
+        expr := unwrap(parse_complete_expr(parser));
 
         decl := Buck(DeclarationExpr);
         decl.idents = idents;
         decl.type_declaration_nullable = ty_expr;
+        decl.value_nullable = expr;
 
-        ret(decl);
+        return ok(decl);
     }
 
-    array_add(additional, expr);
-    ret(expr);
+    if match(.COLON) {
+        expr := unwrap(parse_complete_expr(parser));
+
+        decl := Buck(DeclarationExpr);
+        decl.kind = .COMPTIME_DECLARATION;
+        decl.idents = idents;
+        decl.type_declaration_nullable = ty_expr;
+        decl.value_nullable = expr;
+
+        return ok(decl);
+    }
+
+    decl := Buck(DeclarationExpr);
+    decl.idents = idents;
+    decl.type_declaration_nullable = ty_expr;
+
+    return ok(decl);
 }
 
 // Expressions that can be assigned to a value without parens, but can't be in a
@@ -211,23 +202,109 @@ parse_statement_expr :: (parser: *Parser, additional: *[..] *Expr) -> Result(*Ex
 parse_complete_expr :: (parser: *Parser) -> Result(*Expr) {
     begin, result := start_parse();
 
-    // control flow
-    // @Todo
+    parse_block_expr :: (parser: *Parser, begin: s32) -> Result(*BlockExpr) {
+        result : Result(*BlockExpr);
 
-    // Blocks
-    if match(.LBRACE) {
         eat_statement_separators();
         block_statements : [..] *Expr;
         defer array_free(block_statements);
 
         for enclosed(.RBRACE, .NEWLINE, .SEMICOLON) {
             unwrap(it);
-            unwrap(parse_statement_expr(parser, *block_statements));
+            stmt := unwrap(parse_statement_expr(parser));
+            array_add(*block_statements, stmt);
         }
 
         block := Buck(BlockExpr);
         block.statements = BuckArray(block_statements);
 
+        return ok(block);
+    }
+
+    // procedures
+    if match(.PROC) {
+        lparen := pop();
+        if lparen.kind != .LPAREN
+            throw(lparen, "'proc' keyword needs to be followed with procedure declaration");
+
+        params : [..] *DeclarationExpr;
+        defer array_free(params);
+
+        for enclosed(.RPAREN, .COMMA) {
+            unwrap(it);
+
+            idents := unwrap(parse_complete_expr(parser));
+            colon := pop();
+            if colon.kind != .COLON
+                throw(idents, "expected a declaration, not sure what we got instead");
+
+            decl := unwrap(parse_decl_suffix(parser, begin, idents));
+            array_add(*params, decl);
+        }
+
+        success, matches := match(.LBRACE);
+        if success {
+            body := unwrap(parse_block_expr(parser, begin));
+
+            return_type := Buck(IdentExpr);
+            return_type.begin = matches[matches.count - 1].begin;
+            return_type.end = matches[matches.count - 1].end;
+            return_type.symbol = VOID_SYMBOL;
+
+            proc_expr := Buck(ProcedureExpr);
+            proc_expr.params = BuckArray(params);
+            proc_expr.return_type = return_type;
+            proc_expr.body = body;
+
+            ret(proc_expr);
+        }
+
+        return_type := unwrap(parse_binary_expr(parser));
+        if match(.LBRACE) {
+            body := unwrap(parse_block_expr(parser, begin));
+
+            proc_expr := Buck(ProcedureExpr);
+            proc_expr.params = BuckArray(params);
+            proc_expr.return_type = return_type;
+            proc_expr.body = body;
+
+            ret(proc_expr);
+        }
+
+        throw(peek(), "expected a procedure body");
+    }
+
+    // Return
+    if match(.RETURN) {
+        return_expr := Buck(ReturnExpr);
+
+        next_tok := peek();
+        if next_tok.kind == {
+        case .SEMICOLON; #through;
+        case .NEWLINE;
+            return_value := Buck(Expr);
+            return_value.kind = .NONE;
+            return_expr.value = return_value;
+
+        case;
+            if next_tok.kind == parser.enclosing {
+                return_value := Buck(Expr);
+                return_value.kind = .NONE;
+                return_expr.value = return_value;
+            } else {
+                return_expr.value = unwrap(parse_binary_expr(parser));
+            }
+        }
+
+        ret(return_expr);
+    }
+
+    // control flow
+    // @Todo
+
+    // Blocks
+    if match(.LBRACE) {
+        block := unwrap(parse_block_expr(parser, begin));
         ret(block);
     }
 
@@ -403,7 +480,8 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
 
         for enclosed(.RPAREN, .SEMICOLON) {
             unwrap(it);
-            unwrap(parse_statement_expr(parser, *paren_statements));
+            stmt := unwrap(parse_statement_expr(parser));
+            array_add(*paren_statements, stmt);
         }
 
         if paren_statements.count == 0 {
@@ -573,8 +651,12 @@ ret :: (expr: *Expr) #expand {
     `return ok(expr);
 }
 
+throw :: (err: *Error, loc := #caller_location) #expand {
+    `return error(err, success_type = `result.Value);
+}
+
 throw :: (value: *$T/interface Span, message: string, loc := #caller_location) #expand {
-    `return error(value, message, success_type = `result.Value);
+    `return error(value, message, loc = loc, success_type = `result.Value);
 }
 
 start_parse :: ($T : Type = *Expr) -> s32, Result(T) #expand {
@@ -738,8 +820,12 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
             if iter.consume_stop        p.cursor += 1;
             break;
         } else if !had_separator {
+            // @Todo when a caller doesn't do anything with a failed result, we don't catch
+            // that. Is that important?
+
             message := "missing separator between end of previous expression and beginning of next one";
             it = error(token, message, loc = iter.location);
+            keep_looping = false;
         } else {
             it = ok();
         }
@@ -752,16 +838,17 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
         had_separator = false;
         while true {
             token = *p.tokens[p.cursor];
+            log("sep: %\n", token.kind);
+
             // @Todo this allows stuff like: name,,,,,,, 12
             if array_find(iter.separators, token.kind) {
                 had_separator = true;
-                token = *p.tokens[p.cursor];
                 p.cursor += 1;
                 continue;
             }
 
+            // @Todo should this be before the had_separator check?
             if token.kind == .NEWLINE && should_skip_newlines(p) {
-                token = *p.tokens[p.cursor];
                 p.cursor += 1;
                 continue;
             }

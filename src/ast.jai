@@ -6,14 +6,14 @@
 // UN_TYPE :: LiuType.{ type_id = -2, pointer_count = 0 };
 // SN_TYPE :: LiuType.{ type_id = -1, pointer_count = 0 };
 UNSPECIFIED_TYPE :: LiuType.{ type_id = 0 };
-NONE_TYPE :: LiuType.{ type_id = 1 };
+VOID_TYPE :: LiuType.{ type_id = 1 };
 S64_TYPE :: LiuType.{ type_id = 2 };
 TYPE_TYPE :: LiuType.{ type_id = 3 };
 
 // CASED_UN_TYPE :: #run cased(UN_TYPE);
 // CASED_SN_TYPE :: #run cased(SN_TYPE);
 CASED_UNSPECIFIED_TYPE :: #run cased(UNSPECIFIED_TYPE);
-CASED_NONE_TYPE :: #run cased(NONE_TYPE);
+CASED_VOID_TYPE :: #run cased(VOID_TYPE);
 CASED_S64_TYPE :: #run cased(S64_TYPE);
 CASED_TYPE_TYPE :: #run cased(TYPE_TYPE);
 
@@ -66,6 +66,8 @@ Expr :: struct {
         // complete expression
         BLOCK;
         TUPLE;
+        PROCEDURE;
+        RETURN;
 
         // binary expression
         ADD;
@@ -101,6 +103,7 @@ Expr :: struct {
         EMPTY_PAREN;
         PAREN;
         INTEGER;
+        NONE;
     }
 
     SyntaxFlags :: enum_flags u8 {
@@ -234,6 +237,14 @@ IdentExpr :: struct {
     declaration : *DeclarationIdent = null;
 }
 
+ProcedureExpr :: struct {
+    using _base : IdentExprBase;
+    _base.kind = .PROCEDURE;
+    params : [] *DeclarationExpr;
+    return_type : *Expr;
+    body : *Expr;
+}
+
 #assert(size_of(IdentExpr) == size_of(DeclarationIdent));
 DeclarationIdent :: struct {
     using _base : IdentExprBase;
@@ -248,6 +259,12 @@ DeclarationExpr :: struct {
     type_declaration_nullable : *Expr = null;
     value_nullable : *Expr = null;
     idents : [] *DeclarationIdent;
+}
+
+ReturnExpr :: struct {
+    using _base : Expr;
+    _base.kind = .RETURN;
+    value : *Expr;
 }
 
 #add_context current_tree : *FileExpr = null;
@@ -412,6 +429,14 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
         case .DECLARATION;
             decl := cast(*DeclarationExpr) expr;
             visit_child(decl.idents, decl.type_declaration_nullable, decl.value_nullable);
+
+        case .PROCEDURE;
+            proc_expr := cast(*ProcedureExpr) expr;
+            visit_child(proc_expr.params, proc_expr.return_type, proc_expr.body);
+
+        case .RETURN;
+            return_expr := cast(*ReturnExpr) expr;
+            visit_child(return_expr.value);
 
         case .CALL;
             call := cast(*CallExpr) expr;

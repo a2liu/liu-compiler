@@ -60,7 +60,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope,
 
         ident.type_flags |= .IS_CONST;
 
-        ret(decl_node, NONE_TYPE);
+        ret(decl_node, VOID_TYPE);
     }
 
     previous, found := table_find(scope.runtime_variables, ident.symbol);
@@ -71,7 +71,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope,
     set_type(ident, declared_type);
     table_add(*scope.runtime_variables, ident.symbol, ident);
 
-    ret(decl_node, NONE_TYPE);
+    ret(decl_node, VOID_TYPE);
 }
 
 check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType) -> Result(LiuType) {
@@ -92,7 +92,7 @@ check_file :: (file: *FileExpr) -> Result(void) {
 
     global_scope := Scope.make();
     unwrap(check_scope(file.statements, *global_scope));
-    set_type(file, NONE_TYPE);
+    set_type(file, VOID_TYPE);
     ret();
 }
 
@@ -100,7 +100,7 @@ check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
     scope := Scope.make();
     unwrap(check_scope(block.statements, *scope));
 
-    set_type(block, NONE_TYPE);
+    set_type(block, VOID_TYPE);
     ret();
 }
 
@@ -185,7 +185,7 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     case .CALL;
         // @Todo lmao this is totally wrong
         call := cast(*CallExpr) expr;
-        ret(call, NONE_TYPE);
+        ret(call, VOID_TYPE);
 
     case .ADD;
         // @Todo this doesn't really scale, nor does it really check whether or
@@ -250,12 +250,13 @@ typechecker_init :: () {
 
     builtin_type_name(S64_SYMBOL, S64_TYPE);
     builtin_type_name(TYPE_SYMBOL, TYPE_TYPE);
+    builtin_type_name(VOID_SYMBOL, VOID_TYPE);
 
     decl := New(DeclarationExpr);
     decl.idents = array_copy(idents);
     decl.begin = -1;
     decl.end = -1;
-    set_type(decl, NONE_TYPE);
+    set_type(decl, VOID_TYPE);
 
     comptime_decl : Scope.ComptimeDecl;
     comptime_decl.decl = decl;
@@ -273,7 +274,7 @@ typechecker_init :: () {
         return ptr;
     }
 
-    none_type := builtin_type(NONE_TYPE, TypeInfo);
+    none_type := builtin_type(VOID_TYPE, TypeInfo);
     none_type.kind = .NONE;
 
     int_type := builtin_type(S64_TYPE, TypeInfo);

@@ -12,13 +12,14 @@ UNDERSCORE_SYMBOL : s32 : 0;
 IT_SYMBOL : s32 : 1;
 IDX_SYMBOL : s32 : 2;
 TYPE_SYMBOL : s32 : 3;
-TRUE_SYMBOL : s32 : 4;
-FALSE_SYMBOL : s32 : 5;
+S64_SYMBOL : s32 : 4;
+VOID_SYMBOL : s32 = 5;
+// TRUE_SYMBOL : s32 : 4;
+// FALSE_SYMBOL : s32 : 5;
 NONE_SYMBOL : s32 : 6;
-STRING_SYMBOL : s32 : 7;
-ANY_SYMBOL : s32 : 8;
-BOOL_SYMBOL : s32 : 9;
-S64_SYMBOL : s32 : 10;
+// STRING_SYMBOL : s32 : 7;
+// ANY_SYMBOL : s32 : 8;
+// BOOL_SYMBOL : s32 : 9;
 
 Symbols :: struct {
     symbol_to_name : [..] string;
@@ -33,14 +34,15 @@ Symbols :: struct {
         assert(IT_SYMBOL == add_symbol(*syms, "it"));
         assert(IDX_SYMBOL == add_symbol(*syms, "idx"));
         assert(TYPE_SYMBOL == add_symbol(*syms, "type"));
-
-        assert(TRUE_SYMBOL == add_symbol(*syms, "true"));
-        assert(FALSE_SYMBOL == add_symbol(*syms, "false"));
-        assert(NONE_SYMBOL == add_symbol(*syms, "none"));
-        assert(STRING_SYMBOL == add_symbol(*syms, "string"));
-        assert(ANY_SYMBOL == add_symbol(*syms, "any"));
-        assert(BOOL_SYMBOL == add_symbol(*syms, "bool"));
         assert(S64_SYMBOL == add_symbol(*syms, "s64"));
+        assert(VOID_SYMBOL == add_symbol(*syms, "void"));
+
+        // assert(TRUE_SYMBOL == add_symbol(*syms, "true"));
+        // assert(FALSE_SYMBOL == add_symbol(*syms, "false"));
+        // assert(NONE_SYMBOL == add_symbol(*syms, "none"));
+        // assert(STRING_SYMBOL == add_symbol(*syms, "string"));
+        // assert(ANY_SYMBOL == add_symbol(*syms, "any"));
+        // assert(BOOL_SYMBOL == add_symbol(*syms, "bool"));
 
         return syms;
     }
