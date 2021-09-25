@@ -147,8 +147,7 @@ check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) 
     proc_scope := ProcScope.make(return_type, *params_scope, false);
     unwrap(check_expr(proc_expr.body, *proc_scope));
 
-    set_type(proc_expr, VOID_TYPE);
-    proc_expr.type_flags |= .IS_CONST;
+    const_proc(proc_expr, VOID_TYPE);
     ret();
 }
 
@@ -435,11 +434,11 @@ start_tc :: (value: *$T, loc := #caller_location) #expand {
 const_proc :: (proc_expr: *ProcedureExpr, ty: LiuType) {
     assert(!is_typed(proc_expr));
 
-    expr.type = ty;
-    expr.type_flags |= .IS_TYPED;
-    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
-    expr.type_flags |= .IS_CONST;
-    expr.const_value.as_proc_ptr = proc_expr;
+    proc_expr.type = ty;
+    proc_expr.type_flags |= .IS_TYPED;
+    proc_expr.type_flags &= ~.CHECKING_IN_PROGRESS;
+    proc_expr.type_flags |= .IS_CONST;
+    proc_expr.const_value.as_proc_ptr = proc_expr;
 }
 
 set_value :: (expr: *Expr, value: s64) {
