@@ -125,6 +125,11 @@ Expr :: struct {
     ConstantValue :: union {
         as_s64 : s64 = 0;
         as_type : LiuType = ---;
+
+        // @Note this is a bit weird, but it seems fine. Like if it's constant,
+        // You should be able to use it just like a function pointer in C, and
+        // its runtime value should be generate-able from the AST.
+        as_proc_ptr : *ProcedureExpr = ---;
     }
     #assert(size_of(ConstantValue) == 8);
 

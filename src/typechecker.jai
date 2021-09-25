@@ -10,7 +10,12 @@ Scope :: struct {
         decl: *DeclarationExpr;
         index: s64;
     }
+    Kind :: enum u8 {
+        BASE;
+        PROC;
+    }
 
+    kind : Kind = .BASE;
     comptime_variables : Table(s32, ComptimeDecl);
     runtime_variables : Table(s32, *DeclarationIdent);
     parent: *Scope = null;
@@ -23,6 +28,20 @@ Scope :: struct {
         init(*scope.runtime_variables);
         scope.parent = parent;
         scope.comptime_capture = comptime;
+
+        return scope;
+    }
+}
+
+ProcScope :: struct {
+    using _base : Scope;
+    _base.kind = .PROC;
+    return_type : LiuType;
+
+    make :: (return_type : LiuType, parent : *Scope = null, comptime := false) -> ProcScope {
+        scope : ProcScope;
+        scope._base = Scope.make(parent, comptime);
+        scope.return_type = return_type;
 
         return scope;
     }
@@ -115,10 +134,18 @@ check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
 }
 
 check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) {
-    enclosing_scope := Scope.make(parent_scope, true); // @Todo get working closures
+    params_scope := Scope.make(parent_scope, true); // @Todo get working closures
     for param: proc_expr.params {
-        unwrap(check_decl(param, *enclosing_scope));
+        unwrap(check_decl(param, *params_scope));
     }
+
+    // @Todo How do we do parameterized return types? Scan beforehand? Lazy errors?
+    // probably scan beforehand.
+    unwrap(check_expr(proc_expr.return_type, *params_scope));
+    return_type := unwrap(as_type_expr(proc_expr.return_type));
+
+    proc_scope := ProcScope.make(return_type, *params_scope, false);
+    unwrap(check_expr(proc_expr.body, *proc_scope));
 
     set_type(proc_expr, VOID_TYPE);
     proc_expr.type_flags |= .IS_CONST;
@@ -403,6 +430,16 @@ start_tc :: (value: *$T, loc := #caller_location) #expand {
 
     if is_typed(value)       `return ok();
     value.type_flags |= .CHECKING_IN_PROGRESS;
+}
+
+const_proc :: (proc_expr: *ProcedureExpr, ty: LiuType) {
+    assert(!is_typed(proc_expr));
+
+    expr.type = ty;
+    expr.type_flags |= .IS_TYPED;
+    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
+    expr.type_flags |= .IS_CONST;
+    expr.const_value.as_proc_ptr = proc_expr;
 }
 
 set_value :: (expr: *Expr, value: s64) {
