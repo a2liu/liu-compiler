@@ -123,9 +123,8 @@ parse_decl_suffix :: (parser: *Parser, begin: s32, expr: *Expr) -> Result(*Decla
         idents = cast([] *DeclarationIdent) tuple.members;
 
         for tuple.members {
-            if it.kind != .IDENT {
+            if it.kind != .IDENT
                 throw(it, "this looks like its in a declaration, but its not a name");
-            }
 
             ident := cast(*DeclarationIdent) it;
             ident.file_id = context.current_tree.file_id;
@@ -166,7 +165,7 @@ parse_decl_suffix :: (parser: *Parser, begin: s32, expr: *Expr) -> Result(*Decla
         return ok(decl);
     }
 
-    ty_expr := unwrap(parse_complete_expr(parser));
+    ty_expr := unwrap(parse_binary_expr(parser));
 
     if match(.EQUAL_SIGN) {
         expr := unwrap(parse_complete_expr(parser));
@@ -463,10 +462,9 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             ret(expr);
         }
 
-        if value > cast(u64) Math.S64_MAX {
-            // @Todo add u64 support
+        // @Todo add u64 support
+        if value > cast(u64) Math.S64_MAX
             throw(token, "value is too large for s64!");
-        }
 
         expr := Buck(IntegerExpr);
         expr.const_value.as_s64 = cast,trunc(s64) value;
@@ -839,7 +837,6 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
         had_separator = false;
         while true {
             token = *p.tokens[p.cursor];
-            log("sep: %\n", token.kind);
 
             // @Todo this allows stuff like: name,,,,,,, 12
             if array_find(iter.separators, token.kind) {

@@ -145,3 +145,7 @@ The following extensions to the language hopefully can be done in the language i
   for a.b() |it| {
   }
   ```
+- `a : int;` can create a `DefaultExpr` AST node so that there's one less case of
+  the value slot being null. In fact, parameter declararations can create `ParameterExpr`
+  instread of `DefaultExpr`. Doing so simplifies typechecking a bit, and means
+  another field will never be null

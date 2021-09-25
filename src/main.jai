@@ -45,8 +45,17 @@ run :: (text: string) -> s64 {
     print("ast:\n");
     for stmt: file.statements {
         assert(stmt != null);
-        for stmt {
-            print("% ", it.kind);
+        previous_level := -1;
+        for it, level: stmt {
+            for level..previous_level {
+                print("} ");
+            }
+
+            print("% { ", it.kind);
+            previous_level = level;
+        }
+        for 0..previous_level {
+            print("} ");
         }
         print("\n");
     }

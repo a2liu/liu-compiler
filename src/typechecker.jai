@@ -14,31 +14,38 @@ Scope :: struct {
     comptime_variables : Table(s32, ComptimeDecl);
     runtime_variables : Table(s32, *DeclarationIdent);
     parent: *Scope = null;
+    comptime_capture := false;
 
-    make :: (parent : *Scope = null) -> Scope {
+    make :: (parent : *Scope = null, comptime := false) -> Scope {
         scope : Scope;
 
         init(*scope.comptime_variables);
         init(*scope.runtime_variables);
+        scope.parent = parent;
+        scope.comptime_capture = comptime;
 
         return scope;
     }
 }
 
-check_decl :: (decl_node: *DeclarationExpr, scope: *Scope,
-               comptime := false) -> Result(void) {
+check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
+    comptime := decl_node.kind == .COMPTIME_DECLARATION;
     declared_type := UNSPECIFIED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
-        unwrap(check_expr(type_decl, scope));
+        type_scope := Scope.make(scope, comptime = true);
+        unwrap(check_expr(type_decl, *type_scope));
         declared_type = unwrap(as_type_expr(type_decl));
     }
 
     value_type := UNSPECIFIED_TYPE;
     value := decl_node.value_nullable;
-    assert(value != null); // @Todo this should probably be allowed
-    unwrap(check_expr(value, scope, expected_type = declared_type));
-    value_type = type_of_expr(value);
+    // assert(value != null); // @Todo this should probably be allowed, idk
+    if value != null {
+        value_scope := Scope.make(scope, comptime);
+        unwrap(check_expr(value, *value_scope, expected_type = declared_type));
+        value_type = type_of_expr(value);
+    }
 
     declared_type = unwrap(check_type_transition(decl_node, declared_type, value_type));
 
@@ -75,13 +82,16 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope,
 }
 
 check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType) -> Result(LiuType) {
-    assert(value_type != UNSPECIFIED_TYPE);
+    if value_type == UNSPECIFIED_TYPE && target == UNSPECIFIED_TYPE
+        assert(false, "ya really don't know what type it is eh?");
 
     if target == value_type
         return ok(target);
 
     if target == UNSPECIFIED_TYPE
         return ok(value_type);
+    if value_type == UNSPECIFIED_TYPE
+        return ok(target);
 
     return error(node, "type mismatch", success_type = LiuType);
 }
@@ -97,10 +107,21 @@ check_file :: (file: *FileExpr) -> Result(void) {
 }
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
-    scope := Scope.make();
+    scope := Scope.make(parent_scope);
     unwrap(check_scope(block.statements, *scope));
 
     set_type(block, VOID_TYPE);
+    ret();
+}
+
+check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) {
+    enclosing_scope := Scope.make(parent_scope, true); // @Todo get working closures
+    for param: proc_expr.params {
+        unwrap(check_decl(param, *enclosing_scope));
+    }
+
+    set_type(proc_expr, VOID_TYPE);
+    proc_expr.type_flags |= .IS_CONST;
     ret();
 }
 
@@ -130,7 +151,7 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
         decl := cast(*DeclarationExpr) stmt;
         if !is_typed(decl) {
             decl.type_flags |= .CHECKING_IN_PROGRESS;
-            unwrap(check_decl(decl, scope, comptime = true));
+            unwrap(check_decl(decl, scope));
         }
     }
 
@@ -199,6 +220,11 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 
         ret(plus, expr_type);
 
+    case .PROCEDURE;
+        proc_expr := cast(*ProcedureExpr) expr;
+        unwrap(check_proc(proc_expr, scope));
+        ret();
+
     case .COMPTIME_DECLARATION;
         assert(is_typed(expr));
         ret();
@@ -209,7 +235,8 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         ret();
     }
 
-    assert(false, "% expressions are unimplemented", expr.kind);
+    message := sprint("% expressions are unimplemented", expr.kind);
+    throw(expr, message);
     ret(expr, UNSPECIFIED_TYPE); // for control flow warnings
 }
 
@@ -241,7 +268,7 @@ typechecker_init :: () {
         ident.symbol = symbol;
         ident.begin = -1;
         ident.end = -1;
-        set_type_as_value(ident, ty);
+        set_value(ident, ty);
         array_add(*idents, ident);
         array_add(*symbols, symbol);
     }
@@ -297,29 +324,34 @@ builtin_scope : Scope = ---;
 _types_array : [..] *TypeInfo;
 types : struct {};
 
-search_scope :: (_scope: *Scope, ident: s32, comptime := false) -> Result(*DeclarationIdent) {
+search_scope :: (_scope: *Scope, ident: s32) -> Result(*DeclarationIdent) {
     decl, success := table_find(builtin_scope.runtime_variables, ident);
-    assert(!success); // @Todo should there be something here?
+    assert(!success); // @Todo should there be something here? Maybe the context?
 
     comptime_decl : Scope.ComptimeDecl;
     comptime_decl, success = table_find(builtin_scope.comptime_variables, ident);
     if success      return ok(comptime_decl.decl.idents[comptime_decl.index]);
 
     scope := _scope;
+    only_comptime := false;
     while scope {
-        if !comptime {
+        if !only_comptime {
             decl, success := table_find(scope.runtime_variables, ident);
             if success      return ok(decl);
         }
 
         comptime_decl, success := table_find(scope.comptime_variables, ident);
-        if !is_typed(comptime_decl.decl) {
-            comptime_decl.decl.type_flags |= .CHECKING_IN_PROGRESS;
-            result := check_decl(comptime_decl.decl, scope, comptime = true);
-            unwrap(result, success_type = *DeclarationIdent);
-        }
-        if success      return ok(comptime_decl.decl.idents[comptime_decl.index]);
+        if success {
+            if !is_typed(comptime_decl.decl) {
+                comptime_decl.decl.type_flags |= .CHECKING_IN_PROGRESS;
+                result := check_decl(comptime_decl.decl, scope);
+                unwrap(result, success_type = *DeclarationIdent);
+            }
 
+            return ok(comptime_decl.decl.idents[comptime_decl.index]);
+        }
+
+        only_comptime = only_comptime || scope.comptime_capture;
         scope = scope.parent;
     }
 
@@ -338,7 +370,7 @@ ret :: (expr: *Expr, type: LiuType) #expand {
 }
 
 ret_type :: (expr: *Expr, type: LiuType) #expand {
-    set_type_as_value(expr, type);
+    set_value(expr, type);
 
     `return ok();
 }
@@ -373,22 +405,32 @@ start_tc :: (value: *$T, loc := #caller_location) #expand {
     value.type_flags |= .CHECKING_IN_PROGRESS;
 }
 
-set_type :: inline (value : *Expr, ty: LiuType) {
-    assert(!is_typed(value));
-    assert(ty != UNSPECIFIED_TYPE);
+set_value :: (expr: *Expr, value: s64) {
+    assert(!is_typed(expr));
 
-    value.type = ty;
-    value.type_flags |= .IS_TYPED;
-    value.type_flags &= ~.CHECKING_IN_PROGRESS;
+    expr.type = S64_TYPE;
+    expr.type_flags |= .IS_TYPED;
+    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
+    expr.type_flags |= .IS_CONST;
+    expr.const_value.as_s64 = value;
 }
 
-set_type_as_value :: inline (value : *Expr, ty: LiuType) {
-    assert(!is_typed(value));
-    assert(ty != UNSPECIFIED_TYPE, "set null as type value %", ty);
+set_value :: (expr : *Expr, value: LiuType) {
+    assert(!is_typed(expr));
+    assert(value != UNSPECIFIED_TYPE, "set null as type expr %", value);
 
-    value.type = TYPE_TYPE;
-    value.type_flags &= ~.CHECKING_IN_PROGRESS;
-    value.type_flags |= .IS_TYPED;
-    value.type_flags |= .IS_CONST;
-    value.const_value.as_type = ty;
+    expr.type = TYPE_TYPE;
+    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
+    expr.type_flags |= .IS_TYPED;
+    expr.type_flags |= .IS_CONST;
+    expr.const_value.as_type = value;
+}
+
+set_type :: inline (expr : *Expr, ty: LiuType) {
+    assert(!is_typed(expr));
+    assert(ty != UNSPECIFIED_TYPE);
+
+    expr.type = ty;
+    expr.type_flags |= .IS_TYPED;
+    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
 }

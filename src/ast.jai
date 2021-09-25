@@ -424,15 +424,15 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
 
         case .COMPTIME_DECLARATION;
             decl := cast(*DeclarationExpr) expr;
-            visit_child(decl.idents, decl.type_declaration_nullable, decl.value_nullable);
+            visit_child(cast([] *Expr) decl.idents, decl.type_declaration_nullable, decl.value_nullable);
 
         case .DECLARATION;
             decl := cast(*DeclarationExpr) expr;
-            visit_child(decl.idents, decl.type_declaration_nullable, decl.value_nullable);
+            visit_child(cast([] *Expr) decl.idents, decl.type_declaration_nullable, decl.value_nullable);
 
         case .PROCEDURE;
             proc_expr := cast(*ProcedureExpr) expr;
-            visit_child(proc_expr.params, proc_expr.return_type, proc_expr.body);
+            visit_child(cast([] *Expr) proc_expr.params, proc_expr.return_type, proc_expr.body);
 
         case .RETURN;
             return_expr := cast(*ReturnExpr) expr;
