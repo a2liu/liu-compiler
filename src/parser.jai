@@ -141,7 +141,8 @@ parse_decl_suffix :: (parser: *Parser, begin: s32, expr: *Expr) -> Result(*Decla
         idents[0] = ident;
 
     case;
-        throw(expr, "this looks like its in a declaration, but its not an name or a list of names");
+        msg := "this looks like its in a declaration, but its not an name or a list of names";
+        throw(expr, msg);
     }
 
     if match(.EQUAL_SIGN) {
