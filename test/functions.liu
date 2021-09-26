@@ -10,7 +10,7 @@ make :: proc(value: int) s64 {
 }
 
 test :: proc() int {
-    a := make(13)
+    a : int = make(13)
     return a + make(14)
 }
 

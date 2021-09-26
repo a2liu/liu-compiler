@@ -46,8 +46,8 @@ ProcScope :: struct {
     return_type : LiuType;
 }
 
-init_scoped :: (scope: *ProcScope, parent : *Scope, return_type : LiuType, comptime := false) #expand {
-    Scope.init(*scope._base, parent, comptime);
+init_scoped :: (scope: *ProcScope, parent: *Scope, return_type: LiuType) #expand {
+    Scope.init(*scope._base, parent, false);
     scope.return_type = return_type;
 
     `defer Scope.uninit(scope);
@@ -84,18 +84,18 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
         if !is_const(value)
             throw(value, "value used in constant context wasn't a constant");
 
-        set_type(ident, declared_type);
-        if declared_type == TYPE_TYPE {
-            ident.const_value.as_type = unwrap(as_type_expr(value));
-        } else if declared_type == S64_TYPE {
-            ident.const_value.as_s64 = value.const_value.as_s64;
-        } else {
-            assert(false, "declared type was %", declared_type);
+        if cased(declared_type) == {
+        case CASED_TYPE_TYPE; #through;
+        case CASED_S64_TYPE;
+            set_type(ident, declared_type);
+            ident.const_value = value.const_value;
+            ident.type_flags |= .IS_CONST;
+            ret(decl_node, VOID_TYPE);
+
+        case;
+            message := sprint("declared type was %", declared_type);
+            throw(decl_node, message);
         }
-
-        ident.type_flags |= .IS_CONST;
-
-        ret(decl_node, VOID_TYPE);
     }
 
     previous, found := table_find(scope.runtime_variables, ident.symbol);
@@ -155,10 +155,11 @@ check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) 
     return_type := unwrap(as_type_expr(proc_expr.return_type));
 
     proc_scope : ProcScope;
-    init_scoped(*proc_scope, *params_scope, return_type, false);
+    init_scoped(*proc_scope, *params_scope, return_type);
     unwrap(check_expr(proc_expr.body, *proc_scope));
 
-    const_proc(proc_expr, VOID_TYPE);
+    // @Todo idk man
+    const_proc(proc_expr, S64_TYPE);
     ret();
 }
 
@@ -215,6 +216,9 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         unwrap(check_block(block, scope));
         ret();
 
+    case .NONE;
+        ret(expr, VOID_TYPE);
+
     case .INTEGER;
         literal := cast(*IntegerExpr) expr;
         literal.type_flags |= .IS_CONST;
@@ -238,11 +242,22 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
     case .CALL;
         // @Todo lmao this is totally wrong
         call := cast(*CallExpr) expr;
-        ret(call, VOID_TYPE);
+        ret(call, S64_TYPE);
 
     case .RETURN;
+        return_type_ptr := scope_return_type(scope);
+        if return_type_ptr == null
+            throw(expr, "can't return in this context");
+
         return_expr := cast(*ReturnExpr) expr;
-        unwrap(check_expr(return_expr.value, scope));
+        to_return := return_expr.value;
+        unwrap(check_expr(to_return, scope));
+
+        return_type := << return_type_ptr;
+        type_result := check_type_transition(to_return, return_type, to_return.type);
+        inferred_type := unwrap(type_result);
+        assert(inferred_type == return_type);
+
         ret(return_expr, VOID_TYPE);
 
     case .ADD;
@@ -252,8 +267,8 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         unwrap(check_expr(plus.left, scope));
         unwrap(check_expr(plus.right, scope));
         left, right := plus.left, plus.right;
-        expr_type := unwrap(check_type_transition(plus.left, expected_type, left.type));
-        expr_type = unwrap(check_type_transition(plus.left, expr_type, right.type));
+        expr_type := unwrap(check_type_transition(left, expected_type, left.type));
+        expr_type = unwrap(check_type_transition(left, expr_type, right.type));
 
         ret(plus, expr_type);
 
@@ -371,6 +386,20 @@ _static_buckets : BucketList = ---;
 _types_array : [..] *TypeInfo;
 types : struct {};
 builtin_scope : Scope;
+
+scope_return_type :: (_scope: *Scope) -> *LiuType {
+    scope := _scope;
+    while scope {
+        if scope.kind == .PROC {
+            proc_scope := cast(*ProcScope) scope;
+            return *proc_scope.return_type;
+        }
+
+        scope = scope.parent;
+    }
+
+    return null;
+}
 
 search_scope :: (_scope: *Scope, ident: s32) -> Result(*DeclarationIdent) {
     decl, success := table_find(builtin_scope.runtime_variables, ident);
