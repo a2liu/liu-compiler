@@ -21,23 +21,23 @@ Scope :: struct {
     parent: *Scope = null;
     comptime_capture := false;
 
-    _init :: (scope: *Scope, parent : *Scope, comptime : bool) {
+    init :: (scope: *Scope, parent : *Scope, comptime : bool) {
         init(*scope.comptime_variables);
         init(*scope.runtime_variables);
         scope.parent = parent;
         scope.comptime_capture = comptime;
     }
 
-    _uninit :: (scope: *Scope) {
+    uninit :: (scope: *Scope) {
         uninit(*scope.comptime_variables);
         uninit(*scope.runtime_variables);
     }
 }
 
-init :: (scope: *Scope, parent : *Scope = null, comptime := false) #expand {
-    Scope._init(scope, parent, comptime);
+init_scoped :: (scope: *Scope, parent : *Scope = null, comptime := false) #expand {
+    Scope.init(scope, parent, comptime);
 
-    `defer Scope._uninit(scope);
+    `defer Scope.uninit(scope);
 }
 
 ProcScope :: struct {
@@ -46,11 +46,11 @@ ProcScope :: struct {
     return_type : LiuType;
 }
 
-init :: (scope: *ProcScope, parent : *Scope, return_type : LiuType, comptime := false) #expand {
-    Scope._init(*scope._base, parent, comptime);
+init_scoped :: (scope: *ProcScope, parent : *Scope, return_type : LiuType, comptime := false) #expand {
+    Scope.init(*scope._base, parent, comptime);
     scope.return_type = return_type;
 
-    `defer Scope._uninit(scope);
+    `defer Scope.uninit(scope);
 }
 
 check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
@@ -59,7 +59,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
         type_scope : Scope;
-        init(*type_scope, scope, comptime = true);
+        init_scoped(*type_scope, scope, comptime = true);
 
         unwrap(check_expr(type_decl, *type_scope));
         declared_type = unwrap(as_type_expr(type_decl));
@@ -70,7 +70,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     // assert(value != null); // @Todo this should probably be allowed, idk
     if value != null {
         value_scope : Scope;
-        init(*value_scope, scope, comptime);
+        init_scoped(*value_scope, scope, comptime);
         unwrap(check_expr(value, *value_scope, expected_type = declared_type));
         value_type = unwrap(type_of_expr(value));
     }
@@ -129,7 +129,7 @@ check_file :: (file: *FileExpr) -> Result(void) {
     use_tree(file);
 
     global_scope : Scope;
-    init(*global_scope);
+    init_scoped(*global_scope);
     unwrap(check_scope(file.statements, *global_scope));
     set_type(file, VOID_TYPE);
     ret();
@@ -137,7 +137,7 @@ check_file :: (file: *FileExpr) -> Result(void) {
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
     scope : Scope;
-    init(*scope, parent_scope);
+    init_scoped(*scope, parent_scope);
     unwrap(check_scope(block.statements, *scope));
 
     set_type(block, VOID_TYPE);
@@ -146,7 +146,7 @@ check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
 
 check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) {
     params_scope : Scope;
-    init(*params_scope, parent_scope, true); // @Todo get working closures
+    init_scoped(*params_scope, parent_scope, true); // @Todo get working closures
     unwrap(check_scope(cast([] *Expr) proc_expr.params, *params_scope));
 
     // @Todo How do we do parameterized return types? Scan beforehand? Lazy errors?
@@ -155,7 +155,7 @@ check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) 
     return_type := unwrap(as_type_expr(proc_expr.return_type));
 
     proc_scope : ProcScope;
-    init(*proc_scope, *params_scope, return_type, false);
+    init_scoped(*proc_scope, *params_scope, return_type, false);
     unwrap(check_expr(proc_expr.body, *proc_scope));
 
     const_proc(proc_expr, VOID_TYPE);
@@ -295,7 +295,7 @@ typechecker_init :: () {
     // OPERATING SYSTEMS HAVE SUPPORTED THIS SINCE THIS FUCKING INCEPTION OF
     // VIRTUAL MEMORY. STOP TELLING ME THESE THINGS ARE UNSAFE AND ACTUALLY DO THE
     // THINGS THAT WOULD MAKE IT SAFE.
-    Scope._init(*builtin_scope, null, true);
+    Scope.init(*builtin_scope, null, true);
 
     _static_buckets = BucketList.make();
     remember_allocators(*_types_array);
