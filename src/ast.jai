@@ -280,7 +280,7 @@ ProcedureExpr :: struct {
     params : [] *DeclarationExpr;
     return_type : *Expr;
     body : *Expr;
-    bytecode : *BasicBlock = null; // this probably needs to change eventually?
+    bytecode : BasicBlock; // this probably needs to change eventually?
 }
 
 #assert(size_of(IdentExpr) == size_of(DeclarationIdent));
@@ -586,6 +586,10 @@ BasicBlock :: struct {
         array_reserve(*bb.bytes, size_of(Opcode) * 50);
         return bb;
     }
+}
+
+is_valid :: (bb: *BasicBlock) -> bool {
+    return bb.first != -1;
 }
 
 bb_alloc_array :: (bb: *BasicBlock, count: s64, $T: Type) -> [] T {

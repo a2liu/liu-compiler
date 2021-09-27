@@ -1,4 +1,5 @@
 #import "Basic";
+#import "Hash_Table";
 #import "liu";
 #import "ast";
 
@@ -21,6 +22,10 @@ bytecode_scope :: (bb: *BasicBlock, stmts: [] *Expr) {
     }
 }
 
+bytecode_proc :: (proc_expr: *ProcedureExpr) {
+    proc_expr.bytecode = BasicBlock.make();
+}
+
 bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     if expr.kind == {
     case .UNINITIALIZED;
@@ -34,12 +39,18 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         if is_const(ident) {
             err, expr_type := read(type_of_expr(ident));
             assert(err == null);
-            if Types[expr_type].kind == .PROC {
+            if expr_type == S64_TYPE {
+                op := alloc_op(bb, LiteralS64Op, ident);
+                op.value = ident.const_value.as_s64;
+                ret(bb, op);
+            } else if Types[expr_type].kind == .PROC {
+                op := alloc_op(bb, ProcPtrOp, ident);
+                proc_ptr := ident.const_value.as_proc_ptr;
+                bytecode_proc(proc_ptr);
+                op.value = *proc_ptr.bytecode;
+                ret(bb, op);
             }
             assert(expr_type == S64_TYPE);
-            op := alloc_op(bb, LiteralS64Op, ident);
-            op.value = ident.const_value.as_s64;
-            ret(bb, op);
         }
 
         return ident.declaration.bytecode_register;
