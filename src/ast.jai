@@ -1,4 +1,6 @@
 #import "Basic";
+#import "Hash_Table";
+
 #import "buckets";
 #import "liu";
 
@@ -169,6 +171,36 @@ type_of_expr :: (expr: *Expr, loc := #caller_location) -> Result(LiuType) {
     return ok(expr.type);
 }
 
+set_value :: (expr: *Expr, value: s64) {
+    assert(!is_typed(expr));
+
+    expr.type = S64_TYPE;
+    expr.type_flags |= .IS_TYPED;
+    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
+    expr.type_flags |= .IS_CONST;
+    expr.const_value.as_s64 = value;
+}
+
+set_value :: (expr : *Expr, value: LiuType) {
+    assert(!is_typed(expr));
+    assert(value != UNSPECIFIED_TYPE, "set null as type expr %", value);
+
+    expr.type = TYPE_TYPE;
+    expr.type_flags |= .IS_TYPED;
+    expr.type_flags |= .IS_CONST;
+    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
+    expr.const_value.as_type = value;
+}
+
+set_type :: inline (expr : *Expr, ty: LiuType) {
+    assert(!is_typed(expr));
+    assert(ty != UNSPECIFIED_TYPE);
+
+    expr.type = ty;
+    expr.type_flags |= .IS_TYPED;
+    expr.type_flags &= ~.CHECKING_IN_PROGRESS;
+}
+
 BinaryExpr :: struct {
     using _base : Expr;
     left : *Expr;
@@ -248,6 +280,7 @@ ProcedureExpr :: struct {
     params : [] *DeclarationExpr;
     return_type : *Expr;
     body : *Expr;
+    bytecode : *BasicBlock = null; // this probably needs to change eventually?
 }
 
 #assert(size_of(IdentExpr) == size_of(DeclarationIdent));
@@ -474,5 +507,349 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
     }
 }
 
+// -----------------------------------------------------------------------------
+//
+//                                  BYTECODE
+//
+// -----------------------------------------------------------------------------
 
+// Yeah so we're just gonna flagrantly copy LLVM IR for the most part. No SSA or whatever,
+// and block parameters instead of phi stuff. Blocks can read registers from their
+// guaranteed predecessors. If a block has multiple predecessors, each predecessor
+// that calls into that block needs to pass the register values it uses. We probably
+// also wanna include some data about higher level constructs in the IR, so we can
+// output some reasonably readable C code as a backend.
 
+Opcode :: struct {
+    Kind :: enum u16 {
+        UNINITIALIZED :: 0;
+
+        CALL;
+        RET;
+        PROC_PTR;
+
+        ADD;
+
+        LITERAL_S64;
+    }
+
+    kind : Kind = .UNINITIALIZED;
+    span_length : u16 = 0;
+    span_begin : s32;
+
+    // Opcodes might not be tightly packed.
+    // This field contains the actual size of this opcode in memory.
+    next : *~s32 Opcode = null;
+    previous : *~s32 Opcode = null;
+
+    register : s32 = -1;
+}
+
+CallOp :: struct {
+    using _base : Opcode;
+    _base.kind = .CALL;
+    proc_ptr : *~s32 Opcode; // Maybe this stuff should be absolute instead of relative. IDK.
+    params : [] *~s32 Opcode;
+}
+
+ProcPtrOp :: struct {
+    using _base : Opcode;
+    _base.kind = .PROC_PTR;
+    value : *BasicBlock; // @Todo LMAO we gotta change this later but whatevs
+}
+
+LiteralS64Op :: struct {
+    using _base : Opcode;
+    _base.kind = .LITERAL_S64;
+    value : s64;
+}
+
+BinaryOp :: struct {
+    using _base : Opcode;
+    left: *~s32 Opcode;
+    right: *~s32 Opcode;
+}
+
+RetOp :: struct {
+    using _base : Opcode;
+    _base.kind = .RET;
+}
+
+BasicBlock :: struct {
+    bytes : [..] u8;
+    first: s32 = -1;
+    last : s32 = -1;
+    next_register : s32 = 0;
+
+    make :: () -> BasicBlock {
+        bb : BasicBlock;
+        array_reserve(*bb.bytes, size_of(Opcode) * 50);
+        return bb;
+    }
+}
+
+bb_alloc_array :: (bb: *BasicBlock, count: s64, $T: Type) -> [] T {
+    alloc_size := size_of(T) * count;
+    array_reserve(*bb.bytes, bb.bytes.count + alloc_size);
+    memory_index := bb.bytes.count;
+    bb.bytes.count += alloc_size;
+    assert(bb.bytes.count <= bb.bytes.allocated);
+
+    array : [] T = ---;
+    array.data = cast(*T) *bb.bytes[memory_index];
+    array.count = count;
+
+    return array;
+}
+
+bb_alloc :: (bb: *BasicBlock, $T: Type) -> *T {
+    pointer := bb_alloc_array(bb, 1, T).data;
+
+    ini :: initializer_of(T);
+    inline ini(pointer);
+
+    return pointer;
+}
+
+alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Span, $new_register := true) -> *T {
+    #assert(inherits_from(T, Opcode));
+
+    output := bb_alloc(bb, T);
+    pointer : *Opcode = output; // @Workaround repro/relative_pointers.jai
+    relative_to_base := op_to_index(bb, pointer);
+
+    #if new_register {
+        pointer.register = bb.next_register;
+        bb.next_register += 1;
+    }
+
+    pointer.span_begin = spanned.begin;
+    pointer.span_length = cast(u16) (spanned.end - spanned.begin);
+
+    pointer.next = null;
+
+    if bb.last >= 0 {
+        last := index_to_op(bb, bb.last);
+        last.next = pointer;
+        pointer.previous = last;
+        bb.last = relative_to_base;
+    } else {
+        assert(relative_to_base == 0);
+        pointer.previous = null;
+        bb.first = 0;
+        bb.last = 0;
+    }
+
+    assert(bb.last >= -1); // overflow happened probably
+    return output;
+}
+
+index_to_op :: (bb: *BasicBlock, idx: s32) -> *Opcode {
+    assert(idx >= -1);
+    if idx == -1 {
+        return null;
+    }
+
+    return cast(*Opcode) *bb.bytes[idx];
+}
+
+op_to_index :: (bb: *BasicBlock, op: *Opcode) -> s32 {
+    if op == null {
+        return -1;
+    }
+
+    index := cast(s32) ((cast(*u8) op) - bb.bytes.data);
+    assert(*bb.bytes[index] == cast(*u8) op);
+    return index;
+}
+
+for_expansion :: (iter: *BasicBlock, body: Code, flags: For_Flags) #expand {
+    if iter.last == -1      return;
+
+    REVERSE :: (flags & .REVERSE) != 0;
+    #if REVERSE {
+    index := iter.last;
+    } else {
+    index := iter.first;
+    }
+
+    pointer := index_to_op(iter, index);
+    `it : *Opcode = ---;
+    `it_index : void;
+
+    for <=REVERSE op, _unused: pointer {
+        op_to_index(iter, op);
+        it = op;
+
+        #insert body;
+    }
+
+}
+
+for_expansion :: (iter: *Opcode, body: Code, flags: For_Flags) #expand {
+    `it := iter;
+    `it_index : void;
+
+    while it {
+        #insert body;
+
+        #if flags & .REVERSE {
+            it = it.previous;
+        } else {
+            it = it.next;
+        }
+    }
+}
+
+ast_init :: () {
+    // We really need memory debuggers. Use-after-free should be an obvious bug
+    // to catch in debug builds, honestly. Like what the fuck. Just uncommit the
+    // range and set the reserved block to illegal. Like how can this not be solved.
+    // I don't need malloc to be fast in GODDAMN DEBUG BUILDS. FOR FUCKS SAKE
+    // OPERATING SYSTEMS HAVE SUPPORTED THIS SINCE THIS FUCKING INCEPTION OF
+    // VIRTUAL MEMORY. STOP TELLING ME THESE THINGS ARE UNSAFE AND ACTUALLY DO THE
+    // THINGS THAT WOULD MAKE IT SAFE.
+    Scope.init(*builtin_scope, null, true);
+
+    _static_buckets = BucketList.make();
+    remember_allocators(*_types_array);
+
+    idents : [..] *DeclarationIdent;
+    symbols : [..] s32;
+    defer array_free(idents);
+    defer array_free(symbols);
+
+    remember_allocators(*idents);
+    remember_allocators(*symbols);
+
+    builtin_type_name :: (symbol: s32, ty: LiuType) #expand {
+        ident := New(DeclarationIdent);
+        ident.symbol = symbol;
+        ident.begin = -1;
+        ident.end = -1;
+        set_value(ident, ty);
+        assert(is_typed(ident));
+        array_add(*idents, ident);
+        array_add(*symbols, symbol);
+    }
+
+    push_allocator(bucket_allocator, *_static_buckets);
+
+    builtin_type_name(S64_SYMBOL, S64_TYPE);
+    builtin_type_name(TYPE_SYMBOL, TYPE_TYPE);
+    builtin_type_name(VOID_SYMBOL, VOID_TYPE);
+
+    decl := New(DeclarationExpr);
+    decl.kind = .COMPTIME_DECLARATION;
+    decl.idents = array_copy(idents);
+    decl.begin = -1;
+    decl.end = -1;
+    set_type(decl, VOID_TYPE);
+
+    comptime_decl : Scope.ComptimeDecl;
+    comptime_decl.decl = decl;
+    for symbols {
+        comptime_decl.index = it_index;
+        table_add(*builtin_scope.comptime_variables, it, comptime_decl);
+    }
+
+    builtin_type :: (expected_type: LiuType, $T: Type) -> *T {
+        actual_type, ptr := type_alloc(T);
+        assert(expected_type == actual_type);
+        return ptr;
+    }
+
+    none_type := builtin_type(VOID_TYPE, TypeInfo);
+    none_type.kind = .VOID;
+
+    int_type := builtin_type(S64_TYPE, TypeInfo);
+    int_type.kind = .INTEGER;
+
+    type_type := builtin_type(TYPE_TYPE, TypeInfo);
+    type_type.kind = .TYPE;
+
+}
+
+Scope :: struct {
+    ComptimeDecl :: struct {
+        decl: *DeclarationExpr;
+        index: s64;
+    }
+    Kind :: enum u8 {
+        BASE;
+        PROC;
+    }
+
+    kind : Kind = .BASE;
+    comptime_variables : Table(s32, ComptimeDecl);
+    runtime_variables : Table(s32, *DeclarationIdent);
+    parent: *Scope = null;
+    comptime_capture := false;
+
+    init :: (scope: *Scope, parent : *Scope, comptime : bool) {
+        init(*scope.comptime_variables);
+        init(*scope.runtime_variables);
+        scope.parent = parent;
+        scope.comptime_capture = comptime;
+    }
+
+    uninit :: (scope: *Scope) {
+        uninit(*scope.comptime_variables);
+        uninit(*scope.runtime_variables);
+    }
+}
+
+init_scoped :: (scope: *Scope, parent : *Scope = null, comptime := false) #expand {
+    Scope.init(scope, parent, comptime);
+
+    `defer Scope.uninit(scope);
+}
+
+ProcScope :: struct {
+    using _base : Scope;
+    _base.kind = .PROC;
+    return_type : LiuType;
+}
+
+init_scoped :: (scope: *ProcScope, parent: *Scope, return_type: LiuType) #expand {
+    Scope.init(*scope._base, parent, false);
+    scope.return_type = return_type;
+
+    `defer Scope.uninit(scope);
+}
+
+builtin_scope : Scope;
+Types : struct {
+    proc :: (params: .. LiuType, return_type := VOID_TYPE) -> LiuType {
+        push_allocator(bucket_allocator, *_static_buckets);
+
+        proc_type, ty_info := type_alloc(TypeInfoProcedure);
+        ty_info.params = array_copy(params);
+        ty_info.return_type = return_type;
+
+        return proc_type;
+    }
+};
+
+operator [] :: (db: type_of(Types), ty: LiuType) -> *TypeInfo {
+    assert(ty.type_id > 0);
+    return _types_array[ty.type_id - 1];
+}
+
+#scope_file
+
+// comptime builtins are things like s64
+_static_buckets : BucketList = ---;
+_types_array : [..] *TypeInfo;
+
+type_alloc :: ($T: Type) -> LiuType, *T {
+    push_allocator(bucket_allocator, *_static_buckets);
+    #assert(inherits_from(T, TypeInfo));
+    ptr := New(T);
+    array_add(*_types_array, ptr);
+
+    liu_type : LiuType;
+    liu_type.type_id = cast(s32) _types_array.count;
+
+    return liu_type, ptr;
+}

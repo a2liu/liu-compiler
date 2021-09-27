@@ -16,7 +16,7 @@ init :: () {
     context.logger = liu_logger;
 
     lexer_init();
-    typechecker_init();
+    ast_init();
 }
 
 main :: () {

@@ -2,97 +2,6 @@
 #import "liu";
 #import "ast";
 
-// Yeah so we're just gonna flagrantly copy LLVM IR for the most part. No SSA or whatever,
-// and block parameters instead of phi stuff. Blocks can read registers from their
-// guaranteed predecessors. If a block has multiple predecessors, each predecessor
-// that calls into that block needs to pass the register values it uses. We probably
-// also wanna include some data about higher level constructs in the IR, so we can
-// output some reasonably readable C code as a backend.
-
-Opcode :: struct {
-    Kind :: enum u16 {
-        UNINITIALIZED :: 0;
-
-        ADD;
-
-        LITERAL_S64;
-    }
-
-    kind : Kind = .UNINITIALIZED;
-    span_length : u16 = 0;
-    span_begin : s32;
-
-    // Opcodes might not be tightly packed.
-    // This field contains the actual size of this opcode in memory.
-    next : *~s32 Opcode = null;
-    previous : *~s32 Opcode = null;
-
-    register : s32;
-}
-
-LiteralS64Op :: struct {
-    using _base : Opcode;
-    _base.kind = .LITERAL_S64;
-    value : s64;
-}
-
-BinaryOp :: struct {
-    using _base : Opcode;
-    left: *~s32 Opcode;
-    right: *~s32 Opcode;
-}
-
-BasicBlock :: struct {
-    bytes : [..] u8;
-    first: s32 = -1;
-    last : s32 = -1;
-    next_register : s32 = 0;
-
-    make :: () -> BasicBlock {
-        bb : BasicBlock;
-        array_reserve(*bb.bytes, size_of(Opcode) * 50);
-        return bb;
-    }
-}
-
-for_expansion :: (iter: *BasicBlock, body: Code, flags: For_Flags) #expand {
-    if iter.last == -1      return;
-
-    REVERSE :: (flags & .REVERSE) != 0;
-    #if REVERSE {
-    index := iter.last;
-    } else {
-    index := iter.first;
-    }
-
-    pointer := index_to_op(iter, index);
-    `it : *Opcode = ---;
-    `it_index : void;
-
-    for <=REVERSE op, _unused: pointer {
-        op_to_index(iter, op);
-        it = op;
-
-        #insert body;
-    }
-
-}
-
-for_expansion :: (iter: *Opcode, body: Code, flags: For_Flags) #expand {
-    `it := iter;
-    `it_index : void;
-
-    while it {
-        #insert body;
-
-        #if flags & .REVERSE {
-            it = it.previous;
-        } else {
-            it = it.next;
-        }
-    }
-}
-
 // @Todo replace BasicBlock with actual module object or whatever when it comes time
 bytecode_file :: (file: *FileExpr) -> BasicBlock {
     bb := BasicBlock.make();
@@ -125,6 +34,8 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         if is_const(ident) {
             err, expr_type := read(type_of_expr(ident));
             assert(err == null);
+            if Types[expr_type].kind == .PROC {
+            }
             assert(expr_type == S64_TYPE);
             op := alloc_op(bb, LiteralS64Op, ident);
             op.value = ident.const_value.as_s64;
@@ -146,9 +57,17 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         block := cast(*BlockExpr) expr;
         bytecode_block(bb, block);
 
-    case .COMPTIME_DECLARATION;
+    case .RETURN;
+        return_expr := cast(*ReturnExpr) expr;
+        register := bytecode_expr(bb, return_expr.value);
+        op := alloc_op(bb, RetOp, return_expr, new_register = false);
+        op.register = register;
         ret();
-        assert(false, "COMPTIME_DECLARATION expressions are unimplemented");
+
+    case .COMPTIME_DECLARATION;
+        // @Todo What do we do here?
+        decl := cast(*DeclarationExpr) expr;
+        ret();
 
     case .DECLARATION;
         decl := cast(*DeclarationExpr) expr;
@@ -173,31 +92,47 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     ret();
 }
 
+StackFrame :: struct {
+    register_offset: s64;
+    current_proc: *BasicBlock;
+    opcode: *Opcode;
+}
+
 Interpreter :: struct {
+
     registers : [..] s64; // @Todo change s64 to u64 when we start supporting more types
+    stack : [..] StackFrame;
 
     make :: () -> Interpreter {
         interp : Interpreter;
-        array_reserve(*interp.registers, 20);
+        array_reserve(*interp.registers, 200);
+        array_reserve(*interp.stack, 20);
+
         return interp;
     }
 }
 
 interp_file :: (interp: *Interpreter, bb: *BasicBlock) -> s64 {
+    frame : StackFrame;
+    frame.register_offset = 0;
+    frame.current_proc = bb;
+
     for op: bb {
+        frame.opcode = op;
+
         if op.kind == {
         case .UNINITIALIZED;
             assert(false);
 
         case .ADD;
             add := cast(*BinaryOp) op;
-            left := interp.registers[add.left.register];
-            right := interp.registers[add.right.register];
-            set_register(interp, add.register, left + right);
+            left := get(interp, *frame, add.left.register, s64);
+            right := get(interp, *frame, add.right.register, s64);
+            set(interp, *frame, add.register, left + right);
 
         case .LITERAL_S64;
             literal := cast(*LiteralS64Op) op;
-            set_register(interp, literal.register, literal.value);
+            set(interp, *frame, literal.register, literal.value);
         }
     }
 
@@ -207,11 +142,17 @@ interp_file :: (interp: *Interpreter, bb: *BasicBlock) -> s64 {
     return interp.registers[interp.registers.count - 1];
 }
 
-set_register :: (interp: *Interpreter, register: s64, value: s64) {
-    array_reserve(*interp.registers, register + 1); // this reserves enough space for register to be a valid index
-    interp.registers.count = register + 1;
+get :: (interp: *Interpreter, frame: *StackFrame, register: s64, $T: Type) -> T {
+    physical_id := frame.register_offset + register;
+    return cast(T) interp.registers[physical_id];
+}
+
+set :: (interp: *Interpreter, frame: *StackFrame, register: s64, value: s64) {
+    physical_id := frame.register_offset + register;
+    array_reserve(*interp.registers, physical_id + 1); // this reserves enough space for register to be a valid index
+    interp.registers.count = physical_id + 1;
     assert(interp.registers.count <= interp.registers.allocated);
-    interp.registers[register] = value;
+    interp.registers[physical_id] = value;
 }
 
 #scope_file
@@ -223,78 +164,3 @@ ret :: () #expand {
 ret :: (bb: *BasicBlock, op: *Opcode) #expand {
     `return op_to_index(bb, op);
 }
-
-index_to_op :: (bb: *BasicBlock, idx: s32) -> *Opcode {
-    assert(idx >= -1);
-    if idx == -1 {
-        return null;
-    }
-
-    return cast(*Opcode) *bb.bytes[idx];
-}
-
-op_to_index :: (bb: *BasicBlock, op: *Opcode) -> s32 {
-    if op == null {
-        return -1;
-    }
-
-    index := cast(s32) ((cast(*u8) op) - bb.bytes.data);
-    assert(*bb.bytes[index] == cast(*u8) op);
-    return index;
-}
-
-bb_alloc_array :: (bb: *BasicBlock, count: s64, $T: Type) -> [] T {
-    alloc_size := size_of(T) * count;
-    array_reserve(*bb.bytes, bb.bytes.count + alloc_size);
-    memory_index := bb.bytes.count;
-    bb.bytes.count += alloc_size;
-    assert(bb.bytes.count <= bb.bytes.allocated);
-
-    array : [] T = ---;
-    array.data = cast(*T) *bb.bytes[memory_index];
-    array.count = count;
-
-    return array;
-}
-
-bb_alloc :: (bb: *BasicBlock, $T: Type) -> *T {
-    pointer := bb_alloc_array(bb, 1, T).data;
-
-    ini :: initializer_of(T);
-    inline ini(pointer);
-
-    return pointer;
-}
-
-alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Span) -> *T {
-    #assert(inherits_from(T, Opcode));
-
-    output := bb_alloc(bb, T);
-    pointer : *Opcode = output; // @Workaround repro/relative_pointers.jai
-    relative_to_base := op_to_index(bb, pointer);
-
-    pointer.register = bb.next_register;
-    bb.next_register += 1;
-
-    pointer.span_begin = spanned.begin;
-    pointer.span_length = cast(u16) (spanned.end - spanned.begin);
-
-    pointer.next = null;
-
-
-    if bb.last >= 0 {
-        last := index_to_op(bb, bb.last);
-        last.next = pointer;
-        pointer.previous = last;
-        bb.last = relative_to_base;
-    } else {
-        assert(relative_to_base == 0);
-        pointer.previous = null;
-        bb.first = 0;
-        bb.last = 0;
-    }
-
-    assert(bb.last >= -1); // overflow happened probably
-    return output;
-}
-
