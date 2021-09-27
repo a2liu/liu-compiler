@@ -93,6 +93,13 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
             ret(decl_node, VOID_TYPE);
 
         case;
+            if Types[declared_type].kind == .PROC {
+                set_type(ident, declared_type);
+                ident.const_value = value.const_value;
+                ident.type_flags |= .IS_CONST;
+                ret(decl_node, VOID_TYPE);
+            }
+
             message := sprint("declared type was %", declared_type);
             throw(decl_node, message);
         }
@@ -109,7 +116,9 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     ret(decl_node, VOID_TYPE);
 }
 
-check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType) -> Result(LiuType) {
+// @Todo exact means the types must be semantically equivalent, and you're not allowed to generate
+// a type transition
+check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, $exact := false) -> Result(LiuType) {
     if value_type == UNSPECIFIED_TYPE && target == UNSPECIFIED_TYPE
         assert(false, "ya really don't know what type it is eh?");
 
@@ -120,6 +129,62 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType) 
         return ok(value_type);
     if value_type == UNSPECIFIED_TYPE
         return ok(target);
+
+    target_info := Types[target];
+    value_info := Types[value_type];
+    if target_info.kind == {
+    case .VOID;
+        if value_info.kind != .VOID {
+            message := "wanted an expression of type 'void' here, didn't get it";
+            return error(node, message, success_type = LiuType);
+        }
+
+        return ok(target);
+
+    case .INTEGER;
+        if value_info.kind != .INTEGER {
+            message := "wanted an expression of type 's64' here, didn't get it";
+            return error(node, message, success_type = LiuType);
+        }
+
+        return ok(target);
+
+    case .TYPE;
+        if value_info.kind != .TYPE {
+            message := "wanted an expression of type 'type' here, didn't get it";
+            return error(node, message, success_type = LiuType);
+        }
+
+        return ok(target);
+
+    case .PROC;
+        if value_info.kind != .PROC {
+            message := "wanted an expression of type 'procedure' here, didn't get it";
+            return error(node, message, success_type = LiuType);
+        }
+
+        target_info_proc := cast(*TypeInfoProcedure) target_info;
+        value_info_proc := cast(*TypeInfoProcedure) value_info;
+
+        output_ty_result := check_type_transition(node, target_info_proc.return_type,
+                                                value_info_proc.return_type, exact = true);
+        assert(unwrap(output_ty_result, success_type = LiuType) == target_info_proc.return_type);
+
+        if target_info_proc.params.count != value_info_proc.params.count {
+            message := "this expression is a procedure with the wrong number of arguments";
+            return error(node, message, success_type = LiuType);
+        }
+
+        target_params, value_params := target_info_proc.params, value_info_proc.params;
+        for index: 0..(target_params.count - 1) {
+            output_ty_result = check_type_transition(node, target_params[index], value_params[index],
+                                                     exact = true);
+            assert(unwrap(output_ty_result, success_type = LiuType) == target_params[index]);
+        }
+
+        return ok(target);
+    }
+
 
     return error(node, "type mismatch", success_type = LiuType);
 }
@@ -148,18 +213,28 @@ check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) 
     params_scope : Scope;
     init_scoped(*params_scope, parent_scope, true); // @Todo get working closures
     unwrap(check_scope(cast([] *Expr) proc_expr.params, *params_scope));
+    param_types : [..] LiuType;
+    defer array_free(param_types);
+
+    for decl: proc_expr.params {
+        for decl.idents {
+            param_type := unwrap(type_of_expr(it));
+            array_add(*param_types, param_type);
+        }
+    }
 
     // @Todo How do we do parameterized return types? Scan beforehand? Lazy errors?
     // probably scan beforehand.
     unwrap(check_expr(proc_expr.return_type, *params_scope));
     return_type := unwrap(as_type_expr(proc_expr.return_type));
+    proc_type := Types.proc(..param_types, return_type = return_type);
 
     proc_scope : ProcScope;
     init_scoped(*proc_scope, *params_scope, return_type);
     unwrap(check_expr(proc_expr.body, *proc_scope));
 
     // @Todo idk man
-    const_proc(proc_expr, S64_TYPE);
+    const_proc(proc_expr, proc_type);
     ret();
 }
 
@@ -354,17 +429,14 @@ typechecker_init :: () {
         table_add(*builtin_scope.comptime_variables, it, comptime_decl);
     }
 
-    builtin_type :: (sym: LiuType, $T: Type) -> *T {
-        #assert(inherits_from(T, TypeInfo));
-        assert_eq(sym.type_id, cast(s32) (_types_array.count + 1));
-        ptr := New(T);
-        array_add(*_types_array, ptr);
-
+    builtin_type :: (expected_type: LiuType, $T: Type) -> *T {
+        actual_type, ptr := Types._alloc(T);
+        assert(expected_type == actual_type);
         return ptr;
     }
 
     none_type := builtin_type(VOID_TYPE, TypeInfo);
-    none_type.kind = .NONE;
+    none_type.kind = .VOID;
 
     int_type := builtin_type(S64_TYPE, TypeInfo);
     int_type.kind = .INTEGER;
@@ -376,16 +448,39 @@ typechecker_init :: () {
 
 #scope_file
 
-operator [] :: (db: type_of(types), ty: LiuType) -> *TypeInfo {
-    assert(ty.type_id > 0);
-    return _types_array[ty.type_id - 1];
-}
-
 // comptime builtins are things like s64
 _static_buckets : BucketList = ---;
 _types_array : [..] *TypeInfo;
-types : struct {};
 builtin_scope : Scope;
+
+Types : struct {
+    _alloc :: ($T: Type) -> LiuType, *T {
+        push_allocator(bucket_allocator, *_static_buckets);
+        #assert(inherits_from(T, TypeInfo));
+        ptr := New(T);
+        array_add(*_types_array, ptr);
+
+        liu_type : LiuType;
+        liu_type.type_id = cast(s32) _types_array.count;
+
+        return liu_type, ptr;
+    }
+
+    proc :: (params: .. LiuType, return_type := VOID_TYPE) -> LiuType {
+        push_allocator(bucket_allocator, *_static_buckets);
+
+        proc_type, ty_info := Types._alloc(TypeInfoProcedure);
+        ty_info.params = array_copy(params);
+        ty_info.return_type = return_type;
+
+        return proc_type;
+    }
+};
+
+operator [] :: (db: type_of(Types), ty: LiuType) -> *TypeInfo {
+    assert(ty.type_id > 0);
+    return _types_array[ty.type_id - 1];
+}
 
 scope_return_type :: (_scope: *Scope) -> *LiuType {
     scope := _scope;

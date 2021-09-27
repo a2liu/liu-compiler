@@ -3,15 +3,11 @@
 #import "liu";
 
 // @Todo maybe everything under 0 should be a type variable
-// UN_TYPE :: LiuType.{ type_id = -2, pointer_count = 0 };
-// SN_TYPE :: LiuType.{ type_id = -1, pointer_count = 0 };
 UNSPECIFIED_TYPE :: LiuType.{ type_id = 0 };
 VOID_TYPE :: LiuType.{ type_id = 1 };
 S64_TYPE :: LiuType.{ type_id = 2 };
 TYPE_TYPE :: LiuType.{ type_id = 3 };
 
-// CASED_UN_TYPE :: #run cased(UN_TYPE);
-// CASED_SN_TYPE :: #run cased(SN_TYPE);
 CASED_UNSPECIFIED_TYPE :: #run cased(UNSPECIFIED_TYPE);
 CASED_VOID_TYPE :: #run cased(VOID_TYPE);
 CASED_S64_TYPE :: #run cased(S64_TYPE);
@@ -33,10 +29,10 @@ operator == :: inline (left: LiuType, right: LiuType) -> bool {
 TypeInfo :: struct {
     Kind :: enum u8 {
         UNINITIALIZED;
-        NONE;
+        VOID;
         TYPE;
         INTEGER;
-        PROCEDURE;
+        PROC;
     }
 
     kind := Kind.UNINITIALIZED;
@@ -47,7 +43,7 @@ TypeInfo :: struct {
 
 TypeInfoProcedure :: struct {
     using _base : TypeInfo;
-    _base.kind = .PROCEDURE;
+    _base.kind = .PROC;
     return_type : LiuType;
     params : [] LiuType;
 }
