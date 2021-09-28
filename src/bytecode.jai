@@ -23,9 +23,20 @@ bytecode_scope :: (bb: *BasicBlock, stmts: [] *Expr) {
 }
 
 bytecode_proc :: (proc_expr: *ProcedureExpr) {
+    if is_valid(*proc_expr.bytecode)
+        return;
+
     proc_expr.bytecode = BasicBlock.make();
+    count := 0;
+    for decl: proc_expr.params
+        count += decl.idents.count;
+
+    // @Todo context and object pointer or whatever
+    proc_expr.bytecode.next_register = cast(s32) count;
+    bytecode_expr(*proc_expr.bytecode, proc_expr.body);
 }
 
+// @Todo what should bytecode generate for void stuffs? Like do we just pass a dummy register?
 bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     if expr.kind == {
     case .UNINITIALIZED;
@@ -36,24 +47,25 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
 
     case .IDENT;
         ident := cast(*IdentExpr) expr;
-        if is_const(ident) {
-            err, expr_type := read(type_of_expr(ident));
-            assert(err == null);
-            if expr_type == S64_TYPE {
-                op := alloc_op(bb, LiteralS64Op, ident);
-                op.value = ident.const_value.as_s64;
-                ret(bb, op);
-            } else if Types[expr_type].kind == .PROC {
-                op := alloc_op(bb, ProcPtrOp, ident);
-                proc_ptr := ident.const_value.as_proc_ptr;
-                bytecode_proc(proc_ptr);
-                op.value = *proc_ptr.bytecode;
-                ret(bb, op);
-            }
-            assert(expr_type == S64_TYPE);
-        }
+        if !is_const(ident)
+            return ident.declaration.bytecode_register;
 
-        return ident.declaration.bytecode_register;
+        err, expr_type := read(type_of_expr(ident));
+        assert(err == null);
+
+        if expr_type == S64_TYPE {
+            op := alloc_op(bb, LiteralS64Op, ident);
+            op.value = ident.const_value.as_s64;
+            ret(bb, op);
+        } else if Types[expr_type].kind == .PROC {
+            op := alloc_op(bb, ProcPtrOp, ident);
+            proc_ptr := ident.const_value.as_proc_ptr;
+            bytecode_proc(proc_ptr);
+            op.value = *proc_ptr.bytecode;
+            ret(bb, op);
+        } else {
+            assert(false, "unhandled const value");
+        }
 
     case .INTEGER;
         integer := cast(*IntegerExpr) expr;
@@ -67,12 +79,37 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     case .BLOCK;
         block := cast(*BlockExpr) expr;
         bytecode_block(bb, block);
+        ret();
 
     case .RETURN;
         return_expr := cast(*ReturnExpr) expr;
         register := bytecode_expr(bb, return_expr.value);
-        op := alloc_op(bb, RetOp, return_expr, new_register = false);
-        op.register = register;
+        if register == -1 {
+            op := alloc_op(bb, RetOp, return_expr, new_register = false);
+            ret();
+        } else {
+            op := alloc_op(bb, RetValOp, return_expr, new_register = false);
+            op.register = register;
+            ret();
+        }
+
+    case .CALL;
+        call := cast(*CallExpr) expr;
+        // @Todo closure generation (always?) happens inline; lets not allocate
+        // something on the stack when we start doing closure stuff
+        proc_index := bytecode_expr(bb, call.callee);
+        param_indices : [..] s32;
+        array_reserve(*param_indices, call.params.count);
+
+        for call.params {
+            array_add(*param_indices, bytecode_expr(bb, it));
+        }
+
+        op := alloc_op(bb, CallOp, call);
+        op.proc_ptr = index_to_op(bb, proc_index);
+        // op.params = param_registers;
+
+        assert(false, "CALL expressions are unimplemented");
         ret();
 
     case .COMPTIME_DECLARATION;
@@ -85,6 +122,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         assert(decl.value_nullable != null);
         assert(decl.idents.count == 1);
         decl.idents[0].bytecode_register = bytecode_expr(bb, decl.value_nullable);
+        ret();
 
     case .ADD;
         add := cast(*BinaryExpr) expr;
@@ -100,6 +138,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
         assert(false, "% expressions are unimplemented", expr.kind);
     }
 
+    assert(false, "case fell through");
     ret();
 }
 

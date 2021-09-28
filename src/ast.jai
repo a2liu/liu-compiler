@@ -43,10 +43,12 @@ TypeInfo :: struct {
     defn_end : s32 = -1;
 }
 
+// @Rename ProcedureTypeInfo?
 TypeInfoProcedure :: struct {
     using _base : TypeInfo;
     _base.kind = .PROC;
     return_type : LiuType;
+    // @Todo this should probably be DeclarationIdent
     params : [] LiuType;
 }
 
@@ -241,14 +243,14 @@ CallExpr :: struct {
     using _base : Expr;
     _base.kind = .CALL;
     callee : *Expr;
-    arguments : [] *Expr; // arguments allocated right after call struct
+    params : [] *Expr; // params allocated right after call struct
 }
 
 SubscriptExpr :: struct {
     using _base : Expr;
     _base.kind = .SUBSCRIPT;
     callee : *Expr;
-    arguments : [] *Expr; // arguments allocated right after subscript struct
+    params : [] *Expr; // params allocated right after subscript struct
 }
 
 IntegerExpr :: struct {
@@ -478,11 +480,11 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
 
         case .CALL;
             call := cast(*CallExpr) expr;
-            visit_child(call.callee, call.arguments);
+            visit_child(call.callee, call.params);
 
         case .SUBSCRIPT;
             subscript := cast(*SubscriptExpr) expr;
-            visit_child(subscript.callee, subscript.arguments);
+            visit_child(subscript.callee, subscript.params);
 
         // Binary op
         case .ADD;             #through;
@@ -526,6 +528,7 @@ Opcode :: struct {
 
         CALL;
         RET;
+        RET_VAL;
         PROC_PTR;
 
         ADD;
@@ -573,6 +576,11 @@ BinaryOp :: struct {
 RetOp :: struct {
     using _base : Opcode;
     _base.kind = .RET;
+}
+
+RetValOp :: struct {
+    using _base : Opcode;
+    _base.kind = .RET_VAL;
 }
 
 BasicBlock :: struct {

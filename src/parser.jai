@@ -390,18 +390,18 @@ parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
         if match(.LPAREN) {
             had_match = true;
 
-            args : [..] *Expr;
-            defer array_free(args);
+            params : [..] *Expr;
+            defer array_free(params);
 
             for enclosed(.RPAREN, .COMMA, enable_assign_binary_expr = true) {
                 unwrap(it);
                 arg := unwrap(parse_binary_expr(parser));
-                array_add(*args, arg);
+                array_add(*params, arg);
             }
 
             call := Buck(CallExpr);
             call.callee = expr;
-            call.arguments = BuckArray(args);
+            call.params = BuckArray(params);
 
             expr = call;
         }
@@ -409,20 +409,20 @@ parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
         if match(.LBRACKET) {
             had_match = true;
 
-            args : [..] *Expr;
-            defer array_free(args);
+            params : [..] *Expr;
+            defer array_free(params);
 
             // @Todo should i enable assign_binary_expr here? operator [] is basically
             // just a function call.
             for enclosed(.RBRACKET, .COMMA, enable_assign_binary_expr = true) {
                 unwrap(it);
                 arg := unwrap(parse_binary_expr(parser));
-                array_add(*args, arg);
+                array_add(*params, arg);
             }
 
             call := Buck(SubscriptExpr);
             call.callee = expr;
-            call.arguments = BuckArray(args);
+            call.params = BuckArray(params);
 
             expr = call;
         }

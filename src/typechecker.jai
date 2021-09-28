@@ -267,9 +267,29 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         ret(ident, decl_type);
 
     case .CALL;
-        // @Todo lmao this is totally wrong
         call := cast(*CallExpr) expr;
-        ret(call, S64_TYPE);
+        unwrap(check_expr(call.callee, scope));
+        callee_type := unwrap(type_of_expr(call.callee));
+        callee_info := Types[callee_type];
+        if callee_info.kind != .PROC
+            throw(call.callee, "you're calling something that's not a procedure");
+
+        proc_info := cast(*TypeInfoProcedure) callee_info;
+        if proc_info.params.count != call.params.count // @Todo this doesn't handle optional arguments
+            throw(call, "wrong number of arguments for this procedure call");
+
+        for index: 0..(proc_info.params.count - 1) {
+            expected_param_type := proc_info.params[index];
+            param := call.params[index];
+            unwrap(check_expr(param, scope));
+
+            param_type := unwrap(type_of_expr(param));
+            type_result := check_type_transition(param, expected_param_type, param_type);
+            inferred_type := unwrap(type_result);
+            assert(inferred_type == expected_param_type);
+        }
+
+        ret(call, proc_info.return_type);
 
     case .RETURN;
         return_type_ptr := scope_return_type(scope);
@@ -277,11 +297,12 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
             throw(expr, "can't return in this context");
 
         return_expr := cast(*ReturnExpr) expr;
-        to_return := return_expr.value;
-        unwrap(check_expr(to_return, scope));
+        value := return_expr.value;
+        unwrap(check_expr(value, scope));
+        value_type := unwrap(type_of_expr(value));
 
         return_type := << return_type_ptr;
-        type_result := check_type_transition(to_return, return_type, to_return.type);
+        type_result := check_type_transition(value, return_type, value_type);
         inferred_type := unwrap(type_result);
         assert(inferred_type == return_type);
 

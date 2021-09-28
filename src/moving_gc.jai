@@ -55,12 +55,12 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
         case .CALL;
             call := cast(*CallExpr) it;
             new_call := Copy(call);
-            new_call.arguments = array_copy(call.arguments);
+            new_call.params = array_copy(call.params);
 
         case .SUBSCRIPT;
             subscript := cast(*SubscriptExpr) it;
             new_subscript := Copy(subscript);
-            new_subscript.arguments = array_copy(subscript.arguments);
+            new_subscript.params = array_copy(subscript.params);
 
         // Binary op
         case .ADD;              #through;
