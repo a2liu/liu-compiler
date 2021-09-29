@@ -578,11 +578,6 @@ RetOp :: struct {
     _base.kind = .RET;
 }
 
-RetValOp :: struct {
-    using _base : Opcode;
-    _base.kind = .RET_VAL;
-}
-
 BasicBlock :: struct {
     bytes : [..] u8;
     first: s32 = -1;

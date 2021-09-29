@@ -90,14 +90,9 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     case .RETURN;
         return_expr := cast(*ReturnExpr) expr;
         register := bytecode_expr(bb, return_expr.value);
-        if register == -1 {
-            op := alloc_op(bb, RetOp, return_expr, new_register = false);
-            ret();
-        } else {
-            op := alloc_op(bb, RetValOp, return_expr, new_register = false);
-            op.register = register;
-            ret();
-        }
+        op := alloc_op(bb, RetOp, return_expr, new_register = false);
+        op.register = register;
+        ret();
 
     case .CALL;
         call := cast(*CallExpr) expr;
@@ -201,13 +196,20 @@ interp_file :: (interp: *Interpreter, bb: *BasicBlock) -> s64 {
             pc = index_to_op(callee, callee.first); // jump to function block
             continue;
 
-        case .RET_VAL;
-            ret_val := cast(*RetValOp) pc;
-            value := get(interp, *frame, ret_val.register, s64);
+        case .RET;
+            ret_val := cast(*RetOp) pc;
+            value : s64 = ---;
+            if ret_val.register != -1 {
+                value = get(interp, *frame, ret_val.register, s64);
+            }
+
             interp.registers.count = frame.register_offset;
             frame = pop(*interp.stack);
             assert(pc.kind == .CALL);
-            set(interp, *frame, pc.register, value);
+
+            if ret_val.register != -1 {
+                set(interp, *frame, pc.register, value);
+            }
 
         case;
             assert(false, "INTERP: % ops are unimplemented", pc.kind);
