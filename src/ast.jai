@@ -551,8 +551,8 @@ Opcode :: struct {
 CallOp :: struct {
     using _base : Opcode;
     _base.kind = .CALL;
-    proc_ptr : *~s32 Opcode; // Maybe this stuff should be absolute instead of relative. IDK.
-    params : [] *~s32 Opcode;
+    proc_ptr : s32; // Maybe this stuff should be absolute instead of relative. IDK.
+    params : [] s32;
 }
 
 ProcPtrOp :: struct {
@@ -569,8 +569,8 @@ LiteralS64Op :: struct {
 
 BinaryOp :: struct {
     using _base : Opcode;
-    left: *~s32 Opcode;
-    right: *~s32 Opcode;
+    left: s32;
+    right: s32;
 }
 
 RetOp :: struct {
