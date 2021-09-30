@@ -150,72 +150,72 @@ StackFrame :: struct {
 
 Interpreter :: struct {
     registers : [..] s64; // @Todo change s64 to u64 when we start supporting more types
-    stack : [..] StackFrame;
+    control_stack : [..] StackFrame;
 
     make :: () -> Interpreter {
         interp : Interpreter;
         array_reserve(*interp.registers, 200);
-        array_reserve(*interp.stack, 20);
+        array_reserve(*interp.control_stack, 20);
 
         return interp;
     }
 }
 
 interp_file :: (interp: *Interpreter, bb: *BasicBlock) -> s64 {
-    using frame : StackFrame;
-    register_offset = 0;
-    current_proc = bb;
-    pc = index_to_op(bb, bb.first); // jump to function block
+    frame : StackFrame;
+    frame.register_offset = 0;
+    frame.current_proc = bb;
+    frame.pc = index_to_op(bb, bb.first); // jump to function block
 
-    while pc {
-        if pc.kind == {
+    while frame.pc {
+        if frame.pc.kind == {
         case .UNINITIALIZED;
             assert(false);
 
         case .ADD;
-            add := cast(*BinaryOp) pc;
+            add := cast(*BinaryOp) frame.pc;
             left := get(interp, *frame, add.left, s64);
             right := get(interp, *frame, add.right, s64);
             set(interp, *frame, add.register, left + right);
 
         case .LITERAL_S64;
-            literal := cast(*LiteralS64Op) pc;
+            literal := cast(*LiteralS64Op) frame.pc;
             set(interp, *frame, literal.register, literal.value);
 
         case .PROC_PTR;
-            proc_ptr := cast(*ProcPtrOp) pc;
+            proc_ptr := cast(*ProcPtrOp) frame.pc;
             set(interp, *frame, proc_ptr.register, proc_ptr.value);
 
         case .CALL;
-            call := cast(*CallOp) pc;
+            call := cast(*CallOp) frame.pc;
             callee := get(interp, *frame, call.proc_ptr, *BasicBlock);
             frame_begin := push_args(interp, *frame, call.params);
-            array_add(*interp.stack, frame);
-            register_offset = frame_begin;
-            current_proc = callee;
-            pc = index_to_op(callee, callee.first); // jump to function block
+            array_add(*interp.control_stack, frame);
+            frame.register_offset = frame_begin;
+            frame.current_proc = callee;
+            frame.pc = index_to_op(callee, callee.first); // jump to function block
             continue;
 
         case .RET;
-            ret_val := cast(*RetOp) pc;
+            ret_val := cast(*RetOp) frame.pc;
             value : s64 = ---;
             if ret_val.register != -1 {
                 value = get(interp, *frame, ret_val.register, s64);
             }
 
             interp.registers.count = frame.register_offset;
-            frame = pop(*interp.stack);
-            assert(pc.kind == .CALL);
+            frame = pop(*interp.control_stack);
+            assert(frame.pc.kind == .CALL);
 
             if ret_val.register != -1 {
-                set(interp, *frame, pc.register, value);
+                set(interp, *frame, frame.pc.register, value);
             }
 
         case;
-            assert(false, "INTERP: % ops are unimplemented", pc.kind);
+            assert(false, "INTERP: % ops are unimplemented", frame.pc.kind);
         }
 
-        pc = pc.next;
+        frame.pc = frame.pc.next;
     }
 
     if interp.registers.count == 0
