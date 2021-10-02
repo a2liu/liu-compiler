@@ -618,16 +618,38 @@ bb_alloc :: (bb: *BasicBlock, $T: Type) -> *T {
     return pointer;
 }
 
-alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Span, $new_register := true) -> *T {
+Target :: struct {
+    register : s32; // if this is -1, then we're just making a new thingy
+    // offset is unused
+    offset : s32 = -1; // if this is -1, then we're just assigning to a register
+    // size : s32; // @TODO how do we handle register sizes?
+
+    reg :: (register: s32) -> Target {
+        to_ret : Target;
+        to_ret.register = register;
+        return to_ret;
+    }
+}
+
+// Not even writing to the target
+VOID_TARGET :: Target.{ register = -1, offset = -1 };
+// Making a new register
+NEW_TARGET :: Target.{ register = -2, offset = -1 };
+
+alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Span, target := NEW_TARGET) -> *T {
     #assert(inherits_from(T, Opcode));
 
     output := bb_alloc(bb, T);
     pointer : *Opcode = output; // @Workaround repro/relative_pointers.jai
     relative_to_base := op_to_index(bb, pointer);
 
-    #if new_register {
+    if target.register == VOID_TARGET.register {
+        pointer.register = -1;
+    } else if target.register == NEW_TARGET.register {
         pointer.register = bb.next_register;
         bb.next_register += 1;
+    } else {
+        pointer.register = target.register;
     }
 
     pointer.span_begin = spanned.begin;

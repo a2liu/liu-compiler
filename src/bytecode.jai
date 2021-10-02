@@ -1,7 +1,10 @@
 #import "Basic";
 #import "Hash_Table";
+
+#import "buckets";
 #import "liu";
 #import "ast";
+
 
 // @Todo replace BasicBlock with actual module object or whatever when it comes time
 bytecode_file :: (file: *FileExpr) -> BasicBlock {
@@ -39,11 +42,11 @@ bytecode_proc :: (proc_expr: *ProcedureExpr) {
     // @Todo context and object pointer or whatever
     proc_expr.bytecode.next_register = cast(s32) count;
     bytecode_expr(bb, proc_expr.body);
-    alloc_op(bb, RetOp, proc_expr.body, new_register = false);
+    alloc_op(bb, RetOp, proc_expr.body, target = VOID_TARGET);
 }
 
 // @Todo what should bytecode generate for void stuffs? Like do we just pass a dummy register?
-bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
+bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
     if expr.kind == {
     case .UNINITIALIZED;
         assert(false);
@@ -90,8 +93,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr) -> s32 {
     case .RETURN;
         return_expr := cast(*ReturnExpr) expr;
         register := bytecode_expr(bb, return_expr.value);
-        op := alloc_op(bb, RetOp, return_expr, new_register = false);
-        op.register = register;
+        op := alloc_op(bb, RetOp, return_expr, target = Target.reg(register));
         ret();
 
     case .CALL;
@@ -151,17 +153,21 @@ StackFrame :: struct {
 Interpreter :: struct {
     registers : [..] s64; // @Todo change s64 to u64 when we start supporting more types
     control_stack : [..] StackFrame;
+    heap : BucketList;
 
     make :: () -> Interpreter {
         interp : Interpreter;
         array_reserve(*interp.registers, 200);
         array_reserve(*interp.control_stack, 20);
+        interp.heap = BucketList.make();
 
         return interp;
     }
 }
 
 interp_file :: (interp: *Interpreter, bb: *BasicBlock) -> s64 {
+    push_allocator(bucket_allocator, *interp.heap);
+
     frame : StackFrame;
     frame.register_offset = 0;
     frame.current_proc = bb;
