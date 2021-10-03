@@ -62,6 +62,7 @@ Expr :: struct {
         COMPTIME_DECLARATION;
         DECLARATION;
         DECLARATION_IDENT;
+        ASSIGNMENT;
         // a, b, c := 12, 13, 14
 
         // complete expression
@@ -76,7 +77,7 @@ Expr :: struct {
         MULTIPLY;
         DIVIDE;
 
-        ASSIGN;
+        KEYWORD_ARG;
         NOT_EQUAL;
         CHECK_EQUAL;
         LESS_THAN;
@@ -94,7 +95,7 @@ Expr :: struct {
 
         // unary expression
         REF;
-        DEREF; // *ptr
+        DEREF;
         SUBSCRIPT;
         DOT_ACCESS;
         CALL;
@@ -301,6 +302,13 @@ DeclarationExpr :: struct {
     idents : [] *DeclarationIdent;
 }
 
+AssignmentExpr :: struct {
+    using _base : Expr;
+    _base.kind = .ASSIGNMENT;
+    target : *Expr;
+    value : *Expr;
+}
+
 ReturnExpr :: struct {
     using _base : Expr;
     _base.kind = .RETURN;
@@ -491,7 +499,7 @@ for_expansion :: (iter: *AstDfs, body: Code, flags: For_Flags) #expand {
         case .MINUS;            #through;
         case .MULTIPLY;         #through;
         case .DIVIDE;           #through;
-        case .ASSIGN;           #through;
+        case .KEYWORD_ARG;      #through;
         case .NOT_EQUAL;        #through;
         case .CHECK_EQUAL;      #through;
         case .LESS_THAN;        #through;

@@ -12,7 +12,7 @@ Parser :: struct {
     tokens : [..] Token;
     cursor : s64 = 0;
     enclosing : Token.Kind = .EOF;
-    enable_assign_binary_expr : bool = false;
+    enable_keyword_arg_expr : bool = false;
 
     consume_lexer_and_make :: (lexer: *Lexer) -> Result(Parser) {
         result : Result(Parser);
@@ -100,14 +100,21 @@ parse_statement_expr :: (parser: *Parser) -> Result(*Expr) {
     // its a non-declaration expresion of some kind
     expr := unwrap(parse_complete_expr(parser));
 
-    // is it an assignment?
-    // @Todo
-
-    // is it a compound declaration?
-    // @Todo
+    // is it a declaration?
     if match(.COLON) {
         decl := unwrap(parse_decl_suffix(parser, begin, expr));
         ret(decl);
+    }
+
+    // is it an assignment?
+    if match(.EQUAL_SIGN) {
+        value := unwrap(parse_complete_expr(parser));
+
+        assign := Buck(AssignmentExpr);
+        assign.target = expr;
+        assign.value = value;
+
+        ret(assign);
     }
 
     ret(expr);
@@ -144,17 +151,7 @@ parse_decl_suffix :: (parser: *Parser, begin: s32, expr: *Expr) -> Result(*Decla
         throw(expr, msg);
     }
 
-    if match(.EQUAL_SIGN) {
-        expr := unwrap(parse_complete_expr(parser));
-
-        decl := Buck(DeclarationExpr);
-        decl.idents = idents;
-        decl.value_nullable = expr;
-
-        return ok(decl);
-    }
-
-    if match(.COLON) {
+    if match(.COLON) { // a :: 12;
         expr := unwrap(parse_complete_expr(parser));
 
         decl := Buck(DeclarationExpr);
@@ -165,9 +162,19 @@ parse_decl_suffix :: (parser: *Parser, begin: s32, expr: *Expr) -> Result(*Decla
         return ok(decl);
     }
 
+    if match(.EQUAL_SIGN) { // a := 12;
+        expr := unwrap(parse_complete_expr(parser));
+
+        decl := Buck(DeclarationExpr);
+        decl.idents = idents;
+        decl.value_nullable = expr;
+
+        return ok(decl);
+    }
+
     ty_expr := unwrap(parse_binary_expr(parser));
 
-    if match(.EQUAL_SIGN) {
+    if match(.EQUAL_SIGN) { // a : int = 12;
         expr := unwrap(parse_complete_expr(parser));
 
         decl := Buck(DeclarationExpr);
@@ -178,7 +185,7 @@ parse_decl_suffix :: (parser: *Parser, begin: s32, expr: *Expr) -> Result(*Decla
         return ok(decl);
     }
 
-    if match(.COLON) {
+    if match(.COLON) { // a : int = 12;
         expr := unwrap(parse_complete_expr(parser));
 
         decl := Buck(DeclarationExpr);
@@ -380,6 +387,24 @@ parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
 
     // parse prefix recursively
     // @Todo
+    if match(.AMPERSAND) {
+        referenced := unwrap(parse_unary_expr(parser));
+        pointer := Buck(UnaryExpr);
+        pointer.kind = .REF;
+        pointer.base = referenced;
+
+        ret(pointer);
+    }
+
+    if match(.STAR) {
+        pointer := unwrap(parse_unary_expr(parser));
+        value := Buck(UnaryExpr);
+        value.kind = .DEREF;
+        value.base = pointer;
+
+        ret(value);
+    }
+
 
     expr := unwrap(parse_atom(parser));
 
@@ -393,7 +418,7 @@ parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
             params : [..] *Expr;
             defer array_free(params);
 
-            for enclosed(.RPAREN, .COMMA, enable_assign_binary_expr = true) {
+            for enclosed(.RPAREN, .COMMA, enable_keyword_arg_expr = true) {
                 unwrap(it);
                 arg := unwrap(parse_binary_expr(parser));
                 array_add(*params, arg);
@@ -414,7 +439,7 @@ parse_unary_expr :: (parser: *Parser) -> Result(*Expr) {
 
             // @Todo should i enable assign_binary_expr here? operator [] is basically
             // just a function call.
-            for enclosed(.RBRACKET, .COMMA, enable_assign_binary_expr = true) {
+            for enclosed(.RBRACKET, .COMMA, enable_keyword_arg_expr = true) {
                 unwrap(it);
                 arg := unwrap(parse_binary_expr(parser));
                 array_add(*params, arg);
@@ -564,11 +589,11 @@ binary_operator_info :: (parser: *Parser, kind: Token.Kind) -> bool, BinaryExprI
         info.op_kind = .DIVIDE;
         info.precedence = 60;
 
-    // Simple assignment
+    // Keyword argument
     case .EQUAL_SIGN;
-        if !parser.enable_assign_binary_expr        return false, info;
+        if !parser.enable_keyword_arg_expr        return false, info;
 
-        info.op_kind = .ASSIGN;
+        info.op_kind = .KEYWORD_ARG;
         info.precedence = 10;
         info.is_left_to_right = false;
 
@@ -774,7 +799,7 @@ Enclosed :: struct {
     extra_stops : [] Token.Kind;
     enclosing : Token.Kind;
     consume_stop : bool;
-    enable_assign_binary_expr : bool;
+    enable_keyword_arg_expr : bool;
     #if LIU_DEBUG {
     location : Source_Code_Location;
     }
@@ -783,13 +808,13 @@ Enclosed :: struct {
     // maybe tuples just shouldn't use this code?
 }
 
-enclosed :: (enclosing: Token.Kind, separators: .. Token.Kind, extra_stops : [] Token.Kind = .[], consume_stop := true, enable_assign_binary_expr := false, loc := #caller_location) -> Enclosed {
+enclosed :: (enclosing: Token.Kind, separators: .. Token.Kind, extra_stops : [] Token.Kind = .[], consume_stop := true, enable_keyword_arg_expr := false, loc := #caller_location) -> Enclosed {
     iter : Enclosed;
     iter.enclosing = enclosing;
     iter.separators = separators;
     iter.extra_stops = extra_stops;
     iter.consume_stop = consume_stop;
-    iter.enable_assign_binary_expr = enable_assign_binary_expr;
+    iter.enable_keyword_arg_expr = enable_keyword_arg_expr;
     #if LIU_DEBUG      iter.location = loc;
 
     return iter;
@@ -806,10 +831,10 @@ for_expansion :: (iter: *Enclosed, body: Code, flags: For_Flags) #expand {
     p.enclosing = iter.enclosing;
     defer p.enclosing = previous_enclosing;
 
-    previous_assign_enable := p.enable_assign_binary_expr;
+    previous_assign_enable := p.enable_keyword_arg_expr;
     p.enclosing = iter.enclosing;
-    p.enable_assign_binary_expr = iter.enable_assign_binary_expr;
-    defer p.enable_assign_binary_expr = previous_assign_enable;
+    p.enable_keyword_arg_expr = iter.enable_keyword_arg_expr;
+    defer p.enable_keyword_arg_expr = previous_assign_enable;
 
     token := *p.tokens[p.cursor];
     keep_looping, had_separator := true, true;

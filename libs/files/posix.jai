@@ -66,7 +66,8 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                         if visit_directories  {
                             it.is_directory = true;
                             it.filetime = timespec_to_filetime(stats.st_mtime);
-                            #insert (break = { cursor = directories.count; break; }, continue = continue) body;
+                            #insert (break = { cursor = directories.count; break; },
+                                     continue = { entry = readdir(dirp); continue; }) body;
                         }
                     }
 
@@ -76,7 +77,8 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                         it.is_directory = false;
                         it.filetime = timespec_to_filetime(stats.st_mtime);
 
-                        #insert (break = { cursor = directories.count; break; }, continue = continue) body;
+                        #insert (break = { cursor = directories.count; break; },
+                                 continue = { entry = readdir(dirp); continue; }) body;
                     }
                 }
             }

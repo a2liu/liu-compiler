@@ -81,7 +81,6 @@ Token :: struct {
         EXCLAMATION;
         TILDE;
         STAR;
-        DOUBLE_STAR;
         PERCENT;
         MINUS;
         PLUS;
@@ -116,7 +115,6 @@ Token :: struct {
         A_CIRCLE;
         BACKSLASH;
         AMPERSAND;
-        DOUBLE_AMPERSAND;
         VERTICAL;
         DOUBLE_VERTICAL;
     }
@@ -289,6 +287,9 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
 
         ret(.GREATER_THAN);
 
+    case #char "&";
+        ret(.AMPERSAND);
+
     case #char "~";
         ret(.TILDE);
 
@@ -321,10 +322,6 @@ lex_raw_token :: (lexer: *Lexer) -> Result(Token) {
         ret(.MINUS);
 
     case #char "*";
-        if match(lexer, #char "*") {
-            ret(.DOUBLE_STAR);
-        }
-
         ret(.STAR);
 
     case #char "%";

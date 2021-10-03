@@ -1,5 +1,6 @@
 #import "Basic";
 #import "File";
+#import "String";
 
 #import "files";
 
@@ -29,6 +30,9 @@ test :: () {
     init();
 
     for f_info: bfs_visit_files("test", recursive = false) {
+        if begins_with(f_info.short_name, "ignored")
+            continue;
+
         text := read_entire_file(f_info.full_name);
         result := run(f_info.full_name, text);
         print("'%' completed with result=%\n", f_info.full_name, result);

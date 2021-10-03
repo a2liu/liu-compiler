@@ -67,7 +67,7 @@ run_gc :: (file: *FileExpr) -> *FileExpr {
         case .MINUS;            #through;
         case .MULTIPLY;         #through;
         case .DIVIDE;           #through;
-        case .ASSIGN;           #through;
+        case .KEYWORD_ARG;      #through;
         case .NOT_EQUAL;        #through;
         case .CHECK_EQUAL;      #through;
         case .LESS_THAN;        #through;
