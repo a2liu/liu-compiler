@@ -111,6 +111,24 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, 
 
         return ok(target);
 
+    case .POINTER;
+        if value_info.kind != .POINTER {
+            message := "wanted an expression of type 'pointer' here, didn't get it";
+            return error(node, message, success_type = LiuType);
+        }
+
+        target_info_ptr := cast(*TypeInfoPointer) target_info;
+        value_info_ptr := cast(*TypeInfoPointer) value_info;
+
+        type_result := check_type_transition(node, target_info_ptr.pointing_to,
+                                          value_info_ptr.pointing_to, exact = true);
+        inferred := unwrap(type_result, success_type = LiuType);
+
+        if inferred != target_info_ptr.pointing_to
+            return error(node, "pointer type mismatch", success_type = LiuType);
+
+        return ok(target);
+
     case .PROC;
         if value_info.kind != .PROC {
             message := "wanted an expression of type 'procedure' here, didn't get it";
@@ -122,7 +140,9 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, 
 
         output_ty_result := check_type_transition(node, target_info_proc.return_type,
                                                 value_info_proc.return_type, exact = true);
-        assert(unwrap(output_ty_result, success_type = LiuType) == target_info_proc.return_type);
+        output_ty := unwrap(output_ty_result, success_type = LiuType);
+        if output_ty != target_info_proc.return_type
+            return error(node, "return type mismatch", success_type = LiuType);
 
         if target_info_proc.params.count != value_info_proc.params.count {
             message := "this expression is a procedure with the wrong number of arguments";
@@ -133,7 +153,9 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, 
         for index: 0..(target_params.count - 1) {
             output_ty_result = check_type_transition(node, target_params[index], value_params[index],
                                                      exact = true);
-            assert(unwrap(output_ty_result, success_type = LiuType) == target_params[index]);
+            output_ty := unwrap(output_ty_result, success_type = LiuType);
+            if output_ty != target_params[index]
+                return error(node, "parameter type mismatch", success_type = LiuType);
         }
 
         return ok(target);
