@@ -34,6 +34,7 @@ TypeInfo :: struct {
         VOID;
         TYPE;
         INTEGER;
+        POINTER;
         PROC;
     }
 
@@ -50,6 +51,12 @@ TypeInfoProcedure :: struct {
     return_type : LiuType;
     // @Todo this should probably be DeclarationIdent
     params : [] LiuType;
+}
+
+TypeInfoPointer :: struct {
+    using _base : TypeInfo;
+    _base.kind = .POINTER;
+    pointing_to : LiuType;
 }
 
 Expr :: struct {

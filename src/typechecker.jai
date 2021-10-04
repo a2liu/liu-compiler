@@ -36,22 +36,24 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
         if !is_const(value)
             throw(value, "value used in constant context wasn't a constant");
 
-        if cased(declared_type) == {
-        case CASED_TYPE_TYPE; #through;
-        case CASED_S64_TYPE;
+        if Types[declared_type].kind == {
+        case .TYPE; #through;
+        case .INTEGER;
             set_type(ident, declared_type);
             ident.const_value = value.const_value;
             ident.type_flags |= .IS_CONST;
             ret(decl_node, VOID_TYPE);
 
-        case;
-            if Types[declared_type].kind == .PROC {
-                set_type(ident, declared_type);
-                ident.const_value = value.const_value;
-                ident.type_flags |= .IS_CONST;
-                ret(decl_node, VOID_TYPE);
-            }
+        case .PROC;
+            set_type(ident, declared_type);
+            ident.const_value = value.const_value;
+            ident.type_flags |= .IS_CONST;
+            ret(decl_node, VOID_TYPE);
 
+        case .POINTER;
+            throw(decl_node, "can't have constant value pointer");
+
+        case;
             message := sprint("declared type was %", declared_type);
             throw(decl_node, message);
         }
