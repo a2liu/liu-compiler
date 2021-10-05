@@ -58,16 +58,21 @@ idk. We'll see how much i can fit in a single pass before it becomes unweildy.
 Scopes don't do the thing where they automatically become structs or whatever.
 That'll probably be a thing with modules, but that's it.
 
-Sidestep the whole "prefix vs infix operator" thing by just having a `:` after control
-flow. Like in Python.
+Sidestep the whole "prefix vs infix operator" thing by just having a `:` after
+control flow. Like in Python.
 
 scopes contain information about polymorphic type variables, which get pushed onto
 the typechecker during checking. Or something, idk.
 
 `a : int;` can create a `DefaultExpr` AST node so that there's one less case of
-the value slot being null. In fact, parameter declararations can create `ParameterExpr`
-instread of `DefaultExpr`. Doing so simplifies typechecking a bit, and means
-another field will never be null
+the value slot being null. In fact, parameter declararations can create
+`ParameterExpr` instead of `DefaultExpr`. Doing so simplifies typechecking a bit,
+and means another field will never be null
+
+Instead of having peephole optimizer passes and whatnot, just front-load bytecode
+codegen with all the peephole optimizers. There's not gonna be many of them. Not
+clear how exactly this would work, but it would remove the need for a bunch of
+compiler passes over the bytecode.
 
 ### Big Ideas (Compiler/Language)
 - Small target set (maybe native + bytecode?)
