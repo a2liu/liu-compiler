@@ -30,7 +30,7 @@ test :: () {
     init();
 
     for f_info: bfs_visit_files("test", recursive = false) {
-        if begins_with(f_info.short_name, "ignored")
+        if !begins_with(f_info.short_name, "ignored")
             continue;
 
         text := read_entire_file(f_info.full_name);

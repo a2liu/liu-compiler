@@ -864,7 +864,7 @@ init_scoped :: (scope: *ProcScope, parent: *Scope, return_type: LiuType) #expand
 
 builtin_scope : Scope;
 Types : struct {
-    proc :: (params: .. LiuType, return_type := VOID_TYPE) -> LiuType {
+    proc :: (params: .. LiuType, return_type : LiuType) -> LiuType {
         push_allocator(bucket_allocator, *_static_buckets);
 
         proc_type, ty_info := type_alloc(TypeInfoProcedure);
@@ -872,6 +872,15 @@ Types : struct {
         ty_info.return_type = return_type;
 
         return proc_type;
+    }
+
+    pointer :: (pointing_to: LiuType) -> LiuType {
+        push_allocator(bucket_allocator, *_static_buckets);
+
+        pointer_type, ty_info := type_alloc(TypeInfoPointer);
+        ty_info.pointing_to = pointing_to;
+
+        return pointer_type;
     }
 };
 

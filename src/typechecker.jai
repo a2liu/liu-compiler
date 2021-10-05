@@ -105,7 +105,7 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, 
 
     case .TYPE;
         if value_info.kind != .TYPE {
-            message := "wanted an expression of type 'type' here, didn't get it";
+            message := sprint("wanted an expression of type 'type' here, got '%'", value_info.kind);
             return error(node, message, success_type = LiuType);
         }
 
@@ -332,6 +332,37 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 
         ret(return_expr, VOID_TYPE);
 
+    case .REF;
+        ref_expr := cast(*UnaryExpr) expr;
+        unwrap(check_expr(ref_expr.base, scope));
+        referenced_type := unwrap(type_of_expr(ref_expr.base));
+
+        if is_const(ref_expr.base) {
+            if referenced_type == TYPE_TYPE {
+                expr_type := Types.pointer(ref_expr.base.const_value.as_type);
+                ret_type(ref_expr, expr_type);
+            }
+
+            // @Todo This should be implemented by copying the constant value
+            throw(ref_expr, "can't take reference to constant value");
+        }
+
+        expr_type := Types.pointer(referenced_type);
+        ret(ref_expr, expr_type);
+
+    case .DEREF;
+        deref_expr := cast(*UnaryExpr) expr;
+        unwrap(check_expr(deref_expr.base, scope));
+        pointer_type := unwrap(type_of_expr(deref_expr.base));
+        ty_info := Types[pointer_type];
+        if ty_info.kind != .POINTER
+            throw(deref_expr.base, "can't dereference this, it's not a pointer");
+
+        pointer_ty_info := cast(*TypeInfoPointer) ty_info;
+        base_type := pointer_ty_info.pointing_to;
+
+        ret(deref_expr, base_type);
+
     case .ADD;
         // @Todo this doesn't really scale, nor does it really check whether or
         // not the given type can take this operator. IDK man we'll see i guess.
@@ -339,8 +370,9 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         unwrap(check_expr(plus.left, scope));
         unwrap(check_expr(plus.right, scope));
         left, right := plus.left, plus.right;
-        expr_type := unwrap(check_type_transition(left, expected_type, left.type));
-        expr_type = unwrap(check_type_transition(left, expr_type, right.type));
+        l_ty, r_ty := unwrap(type_of_expr(left)), unwrap(type_of_expr(right));
+        expr_type := unwrap(check_type_transition(left, expected_type, l_ty));
+        expr_type = unwrap(check_type_transition(left, expr_type, r_ty));
 
         ret(plus, expr_type);
 
@@ -357,11 +389,65 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         decl := cast(*DeclarationExpr) expr;
         unwrap(check_decl(decl, scope));
         ret();
+
+    case .ASSIGNMENT;
+        assign_expr := cast(*AssignmentExpr) expr;
+        tc_result := check_assignment(assign_expr.target, assign_expr.value, scope);
+        unwrap(tc_result);
+        ret(assign_expr, VOID_TYPE);
     }
+
 
     message := sprint("% expressions are unimplemented", expr.kind);
     throw(expr, message);
     ret(expr, UNSPECIFIED_TYPE); // for control flow warnings
+}
+
+check_assignment :: (target: *Expr, expr: *Expr, scope: *Scope) -> Result(void) {
+    start_tc(target);
+
+    if target.kind == {
+    case .IDENT;
+        ident := cast(*IdentExpr) target;
+        decl := unwrap(search_scope(scope, ident.symbol));
+        if !decl
+            throw(ident, "unrecognized identifier");
+        // @Todo we could declare the variable here instead, if we really wanted to
+
+        if is_const(decl)
+            throw(ident, "can't assign to this, it was declared as constant");
+
+        ident.declaration = decl;
+        decl_type := unwrap(type_of_expr(decl));
+
+        unwrap(check_expr(expr, scope, expected_type = decl_type));
+        expr_ty := unwrap(type_of_expr(expr));
+        tc_result := check_type_transition(target, decl_type, expr_ty);
+        expr_type := unwrap(tc_result);
+        assert(decl_type == expr_type);
+
+        ret(ident, decl_type);
+
+    case .DEREF;
+        deref_expr := cast(*UnaryExpr) target;
+
+        unwrap(check_expr(deref_expr.base, scope));
+        pointer_type := unwrap(type_of_expr(deref_expr.base));
+        ty_info := Types[pointer_type];
+        if ty_info.kind != .POINTER
+            throw(deref_expr.base, "can't dereference this, it's not a pointer");
+
+        pointer_ty_info := cast(*TypeInfoPointer) ty_info;
+        base_type := pointer_ty_info.pointing_to;
+
+        unwrap(check_expr(expr, scope, expected_type = base_type));
+        expr_ty := unwrap(type_of_expr(expr));
+        tc_result := check_type_transition(target, base_type, expr_ty);
+        expr_type := unwrap(tc_result);
+        assert(base_type == expr_type);
+
+        ret(deref_expr, base_type);
+    }
 }
 
 as_type_expr :: (expr: *Expr) -> Result(LiuType) {

@@ -3,11 +3,13 @@ value := test()
 
 test :: proc() &int {
     value := 13
-    value = takes_pointer(&value)
-    return value
+    takes_pointer(&value)
+    return &value
 }
 
 takes_pointer :: proc(value: &int) &int {
     *value = 12
     return value
 }
+
+int :: s64
