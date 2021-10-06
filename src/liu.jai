@@ -126,7 +126,7 @@ error :: (err: *Error, $success_type := void) -> Result(success_type) {
     return result;
 }
 
-error :: (value: *$T/interface Span, message: string, loc := #caller_location, $success_type := void) -> Result(success_type) {
+error :: (value: *$T/interface Span, message: string, loc := #caller_location, $success_type := void) -> Result(success_type) #expand {
     result : Result(success_type);
     result.did_succeed = false;
     error := New(Error);

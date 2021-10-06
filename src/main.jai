@@ -8,16 +8,17 @@
 #import "ast";
 #import "lexer";
 #import "parser";
-#import "typechecker";
-#import "bytecode";
+#import "tir";
 #import "utils";
-#import "moving_gc";
+// #import "typechecker";
+// #import "bytecode";
+// #import "moving_gc";
 
 init :: () {
     context.logger = liu_logger;
 
     lexer_init();
-    ast_init();
+    tir_init();
 }
 
 main :: () {
@@ -66,18 +67,19 @@ run :: (test_name: string, text: string) -> s64 {
     }
     print_to_builder(*debug_output, "\n");
 
-    assert_result(check_file(file), test_name, text, *debug_output);
+    // assert_result(check_file(file), test_name, text, *debug_output);
 
-    block := bytecode_file(file);
+    // block := bytecode_file(file);
 
-    print_to_builder(*debug_output, "basic block:\n");
-    for block {
-        print_to_builder(*debug_output, "kind: %, next: %, prev: %\n", it.kind, it.next, it.previous);
-    }
-    print_to_builder(*debug_output, "\n");
+    // print_to_builder(*debug_output, "basic block:\n");
+    // for block {
+    //     print_to_builder(*debug_output, "kind: %, next: %, prev: %\n", it.kind, it.next, it.previous);
+    // }
+    // print_to_builder(*debug_output, "\n");
 
-    interp := Interpreter.make();
-    return interp_file(*interp, *block);
+    // interp := Interpreter.make();
+    // return interp_file(*interp, *block);
+    return -1;
 }
 
 assert_result :: (res: Result($T), test_name: string, text: string, builder: *String_Builder) -> T {

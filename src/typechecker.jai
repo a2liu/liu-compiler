@@ -4,6 +4,7 @@
 #import "buckets";
 #import "liu";
 #import "ast";
+#import "tir";
 
 check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     comptime := decl_node.kind == .COMPTIME_DECLARATION;
@@ -165,14 +166,12 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, 
     return error(node, "type mismatch", success_type = LiuType);
 }
 
-check_file :: (file: *FileExpr) -> Result(void) {
+check_file :: (file: *FileExpr) -> Result(*TirProc) {
     start_tc(file);
-    use_tree(file);
 
-    global_scope : Scope;
+    global_scope : CodegenScope;
     init_scoped(*global_scope);
     unwrap(check_scope(file.statements, *global_scope));
-    set_type(file, VOID_TYPE);
     ret();
 }
 
@@ -181,7 +180,6 @@ check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
     init_scoped(*scope, parent_scope);
     unwrap(check_scope(block.statements, *scope));
 
-    set_type(block, VOID_TYPE);
     ret();
 }
 
@@ -518,22 +516,6 @@ search_scope :: (_scope: *Scope, ident: s32) -> Result(*DeclarationIdent) {
 
     out : *DeclarationIdent = null;
     return ok(out);
-}
-
-ret :: () #expand {
-    `return ok();
-}
-
-ret :: (expr: *Expr, type: LiuType) #expand {
-    set_type(expr, type);
-
-    `return ok();
-}
-
-ret_type :: (expr: *Expr, type: LiuType) #expand {
-    set_value(expr, type);
-
-    `return ok();
 }
 
 throw :: (value: *$T/interface Span, message: string, loc := #caller_location) #expand {

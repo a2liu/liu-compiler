@@ -135,13 +135,11 @@ parse_decl_suffix :: (parser: *Parser, begin: s32, expr: *Expr) -> Result(*Decla
 
             ident := cast(*DeclarationIdent) it;
             ident.file_id = context.current_tree.file_id;
-            ident.bytecode_register = -1;
         }
 
     case .IDENT;
         ident := cast(*DeclarationIdent) expr;
         ident.file_id = context.current_tree.file_id;
-        ident.bytecode_register = -1;
         idents.data = Buck(*DeclarationIdent);
         idents.count = 1;
         idents[0] = ident;
@@ -482,7 +480,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             s64_value -= 1;
 
             expr := Buck(IntegerExpr);
-            expr.const_value.as_s64 = s64_value;
+            expr.value = s64_value;
 
             ret(expr);
         }
@@ -492,7 +490,7 @@ parse_atom :: (parser: *Parser) -> Result(*Expr) {
             throw(token, "value is too large for s64!");
 
         expr := Buck(IntegerExpr);
-        expr.const_value.as_s64 = cast,trunc(s64) value;
+        expr.value = cast,trunc(s64) value;
 
         ret(expr);
     }
