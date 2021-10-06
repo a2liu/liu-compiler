@@ -103,6 +103,12 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
         op := alloc_op(bb, RetOp, return_expr, target = Target.reg(register));
         ret();
 
+    case .REF;
+        assert(false, "REF expressions are unimplemented");
+
+    case .DEREF;
+        assert(false, "DEREF expressions are unimplemented");
+
     case .CALL;
         call := cast(*CallExpr) expr;
         proc_register := bytecode_expr(bb, call.callee);
@@ -161,6 +167,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
 
     case;
         assert(false, "% expressions are unimplemented", expr.kind);
+        ret();
     }
 
     assert(false, "case fell through");
@@ -168,6 +175,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
 }
 
 bytecode_assign :: (bb: *BasicBlock, target: *Expr, expr: *Expr) {
+    assert(false, "assign not implemented");
 }
 
 StackFrame :: struct {
