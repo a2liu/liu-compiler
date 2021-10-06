@@ -252,7 +252,7 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
     ret();
 }
 
-check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) -> Result(void) {
+check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type := UNSPECIFIED_TYPE) -> Result(void) {
     start_tc(expr);
 
     if expr.kind == {
@@ -286,6 +286,12 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
         if is_const(decl) {
             ident.type_flags |= .IS_CONST;
             ident.const_value = decl.const_value;
+
+            ret(ident, decl_type);
+        }
+
+        if referenced {
+            decl.type_flags |= .DECL_IS_REFERENCED;
         }
 
         ret(ident, decl_type);
@@ -334,7 +340,7 @@ check_expr :: (expr: *Expr, scope: *Scope, expected_type := UNSPECIFIED_TYPE) ->
 
     case .REF;
         ref_expr := cast(*UnaryExpr) expr;
-        unwrap(check_expr(ref_expr.base, scope));
+        unwrap(check_expr(ref_expr.base, scope, referenced = true));
         referenced_type := unwrap(type_of_expr(ref_expr.base));
 
         if is_const(ref_expr.base) {

@@ -127,8 +127,9 @@ Expr :: struct {
         // execution?
         CHECKING_IN_PROGRESS;
 
-        IS_TYPED; // for expressions that are done with type checking.
+        IS_TYPED; // for expressions that are done with type checking
         IS_CONST; // for expressions that have a valid constant value
+        DECL_IS_REFERENCED; // for variables whose address is referenced
     }
 
     ConstantValue :: union {

@@ -126,6 +126,11 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
         decl.idents[0].bytecode_register = bytecode_expr(bb, decl.value_nullable);
         ret();
 
+    case .ASSIGNMENT;
+        assign_expr := cast(*AssignmentExpr) expr;
+        bytecode_assign(bb, assign_expr.target, assign_expr.value);
+        ret();
+
     case .ADD;
         add := cast(*BinaryExpr) expr;
         left := bytecode_expr(bb, add.left);
@@ -142,6 +147,9 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
 
     assert(false, "case fell through");
     ret();
+}
+
+bytecode_assign :: (bb: *BasicBlock, target: *Expr, expr: *Expr) {
 }
 
 StackFrame :: struct {
