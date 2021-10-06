@@ -129,7 +129,11 @@ Expr :: struct {
 
         IS_TYPED; // for expressions that are done with type checking
         IS_CONST; // for expressions that have a valid constant value
-        DECL_IS_REFERENCED; // for variables whose address is referenced
+
+        // for variables whose address is referenced. Eventually this should also
+        // cover variables whose type is too large for a register. Either way
+        // it means that the baseline storage for the variable MUST be in memory.
+        DECL_IS_REFERENCED;
     }
 
     ConstantValue :: union {
@@ -546,6 +550,7 @@ Opcode :: struct {
         RET;
         RET_VAL;
         PROC_PTR;
+        ALLOC;
 
         ADD;
 
@@ -561,7 +566,7 @@ Opcode :: struct {
     next : *~s32 Opcode = null;
     previous : *~s32 Opcode = null;
 
-    register : s32 = -1;
+    target : Target;
 }
 
 CallOp :: struct {
@@ -592,6 +597,13 @@ BinaryOp :: struct {
 RetOp :: struct {
     using _base : Opcode;
     _base.kind = .RET;
+}
+
+AllocOp :: struct {
+    using _base : Opcode;
+    _base.kind = .ALLOC;
+
+    size : s32;
 }
 
 BasicBlock :: struct {
@@ -652,20 +664,18 @@ VOID_TARGET :: Target.{ register = -1, offset = -1 };
 // Making a new register
 NEW_TARGET :: Target.{ register = -2, offset = -1 };
 
-alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Span, target := NEW_TARGET) -> *T {
+alloc_op :: (bb: *BasicBlock, $T: Type, spanned: *$B/interface Span, target : Target) -> *T {
     #assert(inherits_from(T, Opcode));
 
     output := bb_alloc(bb, T);
     pointer : *Opcode = output; // @Workaround repro/relative_pointers.jai
     relative_to_base := op_to_index(bb, pointer);
 
-    if target.register == VOID_TARGET.register {
-        pointer.register = -1;
-    } else if target.register == NEW_TARGET.register {
-        pointer.register = bb.next_register;
+    if target.register == NEW_TARGET.register {
+        pointer.target.register = bb.next_register;
         bb.next_register += 1;
     } else {
-        pointer.register = target.register;
+        pointer.target = target;
     }
 
     pointer.span_begin = spanned.begin;

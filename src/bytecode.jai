@@ -5,6 +5,13 @@
 #import "liu";
 #import "ast";
 
+// We should view bytecode sorta same way Rust peeps view MIR, i.e. it's an
+// intermediate representation. Rust compiler does typechecking and MIR generation
+// together from what I can tell, but that might not be the best choice for this
+// compiler, as we'd ideally like to let users screw around in the compiler stack
+// at some point. It's not clear to me how to structure this stuff so that it can
+// be done quickly and easily. Not having getters and whatnot is really impeding
+// my ability to add runtime checks willy-nilly. Oh well ig.
 
 // @Todo replace BasicBlock with actual module object or whatever when it comes time
 bytecode_file :: (file: *FileExpr) -> BasicBlock {
@@ -63,11 +70,11 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
         assert(err == null);
 
         if expr_type == S64_TYPE {
-            op := alloc_op(bb, LiteralS64Op, ident);
+            op := alloc_op(bb, LiteralS64Op, ident, target);
             op.value = ident.const_value.as_s64;
             ret(bb, op);
         } else if Types[expr_type].kind == .PROC {
-            op := alloc_op(bb, ProcPtrOp, ident);
+            op := alloc_op(bb, ProcPtrOp, ident, target);
             proc_ptr := ident.const_value.as_proc_ptr;
             bytecode_proc(proc_ptr);
             op.value = *proc_ptr.bytecode;
@@ -81,7 +88,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
         err, expr_type := read(type_of_expr(integer));
         assert(err == null);
         assert(expr_type == S64_TYPE);
-        op := alloc_op(bb, LiteralS64Op, integer);
+        op := alloc_op(bb, LiteralS64Op, integer, target);
         op.value = integer.const_value.as_s64;
         ret(bb, op);
 
@@ -108,14 +115,14 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
             array_add(*param_registers, register);
         }
 
-        op := alloc_op(bb, CallOp, call);
+        op := alloc_op(bb, CallOp, call, target);
         op.proc_ptr = proc_register;
         op.params = param_registers;
 
         ret(bb, op);
 
     case .COMPTIME_DECLARATION;
-        // @Todo What do we do here?
+        // @Todo What do we do here? Maybe nothing tbh.
         decl := cast(*DeclarationExpr) expr;
         ret();
 
@@ -123,7 +130,18 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
         decl := cast(*DeclarationExpr) expr;
         assert(decl.value_nullable != null);
         assert(decl.idents.count == 1);
-        decl.idents[0].bytecode_register = bytecode_expr(bb, decl.value_nullable);
+        ident := decl.idents[0];
+
+        if ident.type_flags & .DECL_IS_REFERENCED {
+            target := alloc_op(bb, AllocOp, ident, NEW_TARGET).target;
+            target.offset = 0;
+            bytecode_expr(bb, decl.value_nullable, target);
+            ident.bytecode_register = target.register;
+            ret();
+        }
+
+        register := bytecode_expr(bb, decl.value_nullable, NEW_TARGET);
+        ident.bytecode_register = register;
         ret();
 
     case .ASSIGNMENT;
@@ -135,7 +153,7 @@ bytecode_expr :: (bb: *BasicBlock, expr: *Expr, target := NEW_TARGET) -> s32 {
         add := cast(*BinaryExpr) expr;
         left := bytecode_expr(bb, add.left);
         right := bytecode_expr(bb, add.right);
-        op := alloc_op(bb, BinaryOp, add);
+        op := alloc_op(bb, BinaryOp, add, target);
         op.kind = .ADD;
         op.left = left;
         op.right = right;
@@ -190,15 +208,15 @@ interp_file :: (interp: *Interpreter, bb: *BasicBlock) -> s64 {
             add := cast(*BinaryOp) frame.pc;
             left := get(interp, *frame, add.left, s64);
             right := get(interp, *frame, add.right, s64);
-            set(interp, *frame, add.register, left + right);
+            set(interp, *frame, add, left + right);
 
         case .LITERAL_S64;
             literal := cast(*LiteralS64Op) frame.pc;
-            set(interp, *frame, literal.register, literal.value);
+            set(interp, *frame, literal, literal.value);
 
         case .PROC_PTR;
             proc_ptr := cast(*ProcPtrOp) frame.pc;
-            set(interp, *frame, proc_ptr.register, proc_ptr.value);
+            set(interp, *frame, proc_ptr, proc_ptr.value);
 
         case .CALL;
             call := cast(*CallOp) frame.pc;
@@ -213,16 +231,16 @@ interp_file :: (interp: *Interpreter, bb: *BasicBlock) -> s64 {
         case .RET;
             ret_val := cast(*RetOp) frame.pc;
             value : s64 = ---;
-            if ret_val.register != -1 {
-                value = get(interp, *frame, ret_val.register, s64);
+            if ret_val.target.register != -1 {
+                value = get(interp, *frame, ret_val.target.register, s64);
             }
 
             interp.registers.count = frame.register_offset;
             frame = pop(*interp.control_stack);
             assert(frame.pc.kind == .CALL);
 
-            if ret_val.register != -1 {
-                set(interp, *frame, frame.pc.register, value);
+            if ret_val.target.register != -1 {
+                set(interp, *frame, frame.pc, value);
             }
 
         case;
@@ -255,16 +273,23 @@ push_args :: (interp: *Interpreter, frame: *StackFrame, param_registers: [] s32)
     return frame_begin;
 }
 
-set :: (interp: *Interpreter, frame: *StackFrame, register: s32, value: *$T) {
-    set(interp, frame, register, cast(s64) value);
+set :: (interp: *Interpreter, frame: *StackFrame, op: *Opcode, value: *$T) {
+    set(interp, frame, op, cast(s64) value);
 }
 
-set :: (interp: *Interpreter, frame: *StackFrame, register: s32, value: s64) {
-    physical_id := frame.register_offset + register;
-    array_reserve(*interp.registers, physical_id + 1); // this reserves enough space for register to be a valid index
-    interp.registers.count = physical_id + 1;
-    assert(interp.registers.count <= interp.registers.allocated);
-    interp.registers[physical_id] = value;
+set :: (interp: *Interpreter, frame: *StackFrame, op: *Opcode, value: s64) {
+    physical_id := frame.register_offset + op.target.register;
+    if op.target.offset < 0 { // target is a register
+        // reserve enough space for `register` to be a valid index
+        array_reserve(*interp.registers, physical_id + 1);
+        interp.registers.count = physical_id + 1;
+        assert(interp.registers.count <= interp.registers.allocated);
+        interp.registers[physical_id] = value;
+    }
+
+    pointer_value := interp.registers[physical_id] + op.target.offset;
+    pointer := cast(*s64) pointer_value;
+    << pointer = value;
 }
 
 #scope_file
@@ -274,5 +299,8 @@ ret :: () #expand {
 }
 
 ret :: (bb: *BasicBlock, op: *Opcode) #expand {
-    `return op.register;
+    if op.target.offset < 0
+        `return -1;
+
+    `return op.target.register;
 }
