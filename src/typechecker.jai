@@ -8,7 +8,7 @@
 
 check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     comptime := decl_node.kind == .COMPTIME_DECLARATION;
-    declared_type := UNSPECIFIED_TYPE;
+    declared_type := UNINITIALIZED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
         type_scope : Scope;
@@ -18,7 +18,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
         declared_type = unwrap(as_type_expr(type_decl));
     }
 
-    value_type := UNSPECIFIED_TYPE;
+    value_type := UNINITIALIZED_TYPE;
     value := decl_node.value_nullable;
     // assert(value != null); // @Todo this should probably be allowed, idk
     if value != null {
@@ -39,12 +39,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
 
         if Types[declared_type].kind == {
         case .TYPE; #through;
-        case .INTEGER;
-            set_type(ident, declared_type);
-            ident.const_value = value.const_value;
-            ident.type_flags |= .IS_CONST;
-            ret(decl_node, VOID_TYPE);
-
+        case .INTEGER; #through;
         case .PROC;
             set_type(ident, declared_type);
             ident.const_value = value.const_value;
@@ -74,15 +69,15 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
 // @Todo exact means the types must be semantically equivalent, and you're not allowed to generate
 // a type transition
 check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, $exact := false) -> Result(LiuType) {
-    if value_type == UNSPECIFIED_TYPE && target == UNSPECIFIED_TYPE
+    if value_type == UNINITIALIZED_TYPE && target == UNINITIALIZED_TYPE
         assert(false, "ya really don't know what type it is eh?");
 
     if target == value_type
         return ok(target);
 
-    if target == UNSPECIFIED_TYPE
+    if target == UNINITIALIZED_TYPE
         return ok(value_type);
-    if value_type == UNSPECIFIED_TYPE
+    if value_type == UNINITIALIZED_TYPE
         return ok(target);
 
     target_info := Types[target];
@@ -167,12 +162,10 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, 
 }
 
 check_file :: (file: *FileExpr) -> Result(*TirProc) {
-    start_tc(file);
-
     global_scope : CodegenScope;
     init_scoped(*global_scope);
-    unwrap(check_scope(file.statements, *global_scope));
-    ret();
+    unwrap(check_scope(file.statements, *global_scope), success_type = *TirProc);
+    return ok(global_scope.codegen);
 }
 
 check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
@@ -226,9 +219,8 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
         if found
             throw(decl, "redeclared identifier");
 
-        comptime_decl : Scope.ComptimeDecl;
+        comptime_decl : Scope.ConstDecl;
         comptime_decl.decl = decl;
-        comptime_decl.index = 0;
         table_add(*scope.comptime_variables, ident.symbol, comptime_decl);
     }
 
@@ -237,7 +229,6 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
 
         decl := cast(*DeclarationExpr) stmt;
         if !is_typed(decl) {
-            decl.type_flags |= .CHECKING_IN_PROGRESS;
             unwrap(check_decl(decl, scope));
         }
     }
@@ -250,9 +241,7 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
     ret();
 }
 
-check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type := UNSPECIFIED_TYPE) -> Result(void) {
-    start_tc(expr);
-
+check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type := UNINITIALIZED_TYPE) -> Result(s32) {
     if expr.kind == {
     case .UNINITIALIZED;
         assert(false);
@@ -404,12 +393,10 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
 
     message := sprint("% expressions are unimplemented", expr.kind);
     throw(expr, message);
-    ret(expr, UNSPECIFIED_TYPE); // for control flow warnings
+    ret(expr, UNINITIALIZED_TYPE); // for control flow warnings
 }
 
 check_assignment :: (target: *Expr, expr: *Expr, scope: *Scope) -> Result(void) {
-    start_tc(target);
-
     if target.kind == {
     case .IDENT;
         ident := cast(*IdentExpr) target;
@@ -454,16 +441,6 @@ check_assignment :: (target: *Expr, expr: *Expr, scope: *Scope) -> Result(void) 
     }
 }
 
-as_type_expr :: (expr: *Expr) -> Result(LiuType) {
-    if !is_const(expr)
-        return error(expr, "expression isn't constant!", success_type = LiuType);
-
-    if expr.type != TYPE_TYPE
-        return error(expr, "the value here needs to be a type", success_type = LiuType);
-
-    return ok(expr.const_value.as_type);
-}
-
 #scope_file
 
 scope_return_type :: (_scope: *Scope) -> *LiuType {
@@ -480,49 +457,62 @@ scope_return_type :: (_scope: *Scope) -> *LiuType {
     return null;
 }
 
-search_scope :: (_scope: *Scope, ident: s32) -> Result(*DeclarationIdent) {
+search_scope :: (_scope: *Scope, ident: s32) -> Result(s32) {
     decl, success := table_find(builtin_scope.runtime_variables, ident);
     assert(!success); // @Todo should there be something here? Maybe the context?
 
-    comptime_decl : Scope.ComptimeDecl;
-    comptime_decl, success = table_find(builtin_scope.comptime_variables, ident);
-    if success {
-        decl_ident := comptime_decl.decl.idents[comptime_decl.index];
-        return ok(decl_ident);
+    copy_const_decl :: (tir: *TirProc, decl: *DeclarationExpr, decl_op: *ConstDeclareOp) -> Result(s32) {
+        const_op := alloc_op(tir, ConstOp, decl);
+        const_op.value = decl_op.value;
+        const_op.expr_type = decl_op.expr_type;
+        return ok(op_to_index(tir, const_op));
     }
 
     scope := _scope;
+    tir_proc := Scope.codegen(scope).codegen;
+    comptime_decl : Scope.ConstDecl;
+    comptime_decl, success = table_find(builtin_scope.comptime_variables, ident);
+    if success {
+        assert(comptime_decl.value != null);
+        return copy_const_decl(tir_proc, comptime_decl.decl, comptime_decl.value);
+    }
+
     only_comptime := false;
     while scope {
         if !only_comptime {
             decl, success := table_find(scope.runtime_variables, ident);
-            if success      return ok(decl);
+            if success      return ok(op_to_index(tir_proc, decl));
         }
 
-        comptime_decl, success := table_find(scope.comptime_variables, ident);
-        if success {
-            if !is_typed(comptime_decl.decl) {
-                comptime_decl.decl.type_flags |= .CHECKING_IN_PROGRESS;
-                result := check_decl(comptime_decl.decl, scope);
-                unwrap(result, success_type = *DeclarationIdent);
-            }
+        comptime_decl := table_find_pointer(scope.comptime_variables, ident);
+        if comptime_decl {
+            decl_ast := comptime_decl.decl;
+            if comptime_decl.value
+                return copy_const_decl(tir_proc, comptime_decl.decl, comptime_decl.value);
+            if comptime_decl.checking
+                return error(comptime_decl.decl, "circular dependency detected", success_type = s32);
 
-            return ok(comptime_decl.decl.idents[comptime_decl.index]);
+            comptime_decl.checking = true;
+            result := check_decl(comptime_decl.decl, scope);
+            unwrap(result, success_type = s32);
+            assert(comptime_decl.value != null);
+
+            return copy_const_decl(tir_proc, comptime_decl.decl, comptime_decl.value);
         }
 
         only_comptime = only_comptime || scope.comptime_capture;
         scope = scope.parent;
+        tir_proc = Scope.codegen(scope).codegen;
     }
 
-    out : *DeclarationIdent = null;
-    return ok(out);
+    return ok(cast(s32) -1);
 }
 
 throw :: (value: *$T/interface Span, message: string, loc := #caller_location) #expand {
-    `return error(value, message, loc = loc);
+    `return error(value, message, loc = loc, success_type = s32);
 }
 
-unwrap :: (result: Result($T), $success_type := void) -> T #expand
+unwrap :: (result: Result($T), $success_type := s32) -> T #expand
 #modify {
     if T == type_info(void) {
         T = null;
@@ -535,17 +525,9 @@ unwrap :: (result: Result($T), $success_type := void) -> T #expand
     return success;
 }
 
-unwrap :: (result: Result(void), $success_type := void) #expand {
+unwrap :: (result: Result(void), $success_type := s32) #expand {
     err := read(result);
     if err      `return error(err, success_type = success_type);
-}
-
-start_tc :: (value: *$T, loc := #caller_location) #expand {
-    checking := 0 != (value.type_flags & .CHECKING_IN_PROGRESS);
-    assert(!checking, "circular dependency detected", loc = loc);
-
-    if is_typed(value)       `return ok();
-    value.type_flags |= .CHECKING_IN_PROGRESS;
 }
 
 const_proc :: (proc_expr: *ProcedureExpr, ty: LiuType) {

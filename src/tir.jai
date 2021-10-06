@@ -3,6 +3,7 @@
 
 #import "buckets";
 #import "liu";
+#import "ast";
 
 // @Todo maybe everything under 0 should be a type variable
 UNINITIALIZED_TYPE : LiuType : 0;
@@ -84,10 +85,8 @@ Opcode :: struct {
     span_length : u16 = 0;
     span_begin : s32;
 
-    // Opcodes might not be tightly packed.
-    // This field contains the actual size of this opcode in memory.
-    expr_type : LiuType;
     next : *~s32 Opcode = null;
+    expr_type : LiuType;
 }
 
 ConstOp :: struct {
@@ -170,10 +169,6 @@ TirProc :: struct {
         array_reserve(*bb.bytes, size_of(Opcode) * 50);
         return bb;
     }
-}
-
-is_valid :: (bb: *TirProc) -> bool {
-    return bb.first != -1;
 }
 
 bb_alloc_array :: (bb: *TirProc, count: s64, $T: Type) -> [] T {
@@ -320,8 +315,10 @@ tir_init :: () {
     builtin_type_name(TYPE_SYMBOL, TYPE_TYPE);
     builtin_type_name(VOID_SYMBOL, VOID_TYPE);
 
+    const_decl : Scope.ConstDecl;
     for idents {
-        table_add(*builtin_scope.comptime_variables, it.symbol, it);
+        const_decl.value = it;
+        table_add(*builtin_scope.comptime_variables, it.symbol, const_decl);
     }
 
     builtin_type :: (expected_type: LiuType, $T: Type) -> *T {
@@ -348,12 +345,34 @@ Scope :: struct {
         PROC;
     }
 
+    // @Todo This doesn't update correctly after a decl is checked. It's fine for now
+    // because we only support singular declarations, but like, dis ain't good chief.
+    ConstDecl :: struct {
+        checking : bool = false;
+        decl : *DeclarationExpr = null;
+        value: *ConstDeclareOp = null;
+    }
+
     kind : Kind = .BASE;
-    comptime_variables : Table(s32, *ConstDeclareOp);
+    comptime_variables : Table(s32, ConstDecl);
     runtime_variables : Table(s32, *DeclareOp);
     parent: *Scope = null;
     codegen_parent : *CodegenScope = null;
     comptime_capture := false;
+
+    codegen :: (scope: *Scope) -> *CodegenScope {
+        assert(scope != null);
+
+        if scope.kind == {
+        case .CODEGEN; #through;
+        case .PROC;
+            return cast(*CodegenScope) scope;
+
+        case;
+            return scope.codegen_parent;
+        }
+    }
+
 
     init :: (scope: *Scope, parent : *Scope, comptime : bool) {
         init(*scope.comptime_variables);
@@ -362,15 +381,7 @@ Scope :: struct {
         scope.comptime_capture = comptime;
 
         if parent == null       return;
-        if parent.kind == {
-        case .CODEGEN; #through;
-        case .PROC;
-            scope.codegen_parent = cast(*CodegenScope) parent;
-
-        case;
-            scope.codegen_parent = parent.codegen_parent;
-        }
-
+        scope.codegen_parent = Scope.codegen(parent);
     }
 
     uninit :: (scope: *Scope) {
@@ -389,15 +400,17 @@ CodegenScope :: struct {
     using __base : Scope;
     __base.kind = .CODEGEN;
     codegen : *TirProc; // @Todo this guy leaks big time
+    deferred_procs : [..] *TirProc;
 }
 
 init_scoped :: (scope: *CodegenScope, parent: *Scope, return_type: LiuType) #expand {
     Scope.init(*scope._base, parent, false);
     scope.codegen = New(TirProc, initialized = false);
     << scope.codegen = TirProc.make();
-    scope.return_type = return_type;
+    remember_allocators(*scope.deferred_procs);
 
     `defer Scope.uninit(scope);
+    `defer array_free(scope.deferred_procs);
 }
 
 ProcScope :: struct {
@@ -410,9 +423,11 @@ init_scoped :: (scope: *ProcScope, parent: *Scope, return_type: LiuType) #expand
     Scope.init(*scope._base, parent, false);
     scope.codegen = New(TirProc, initialized = false);
     << scope.codegen = TirProc.make();
+    remember_allocators(*scope.deferred_procs);
     scope.return_type = return_type;
 
     `defer Scope.uninit(scope);
+    `defer array_free(scope.deferred_procs);
 }
 
 builtin_scope : Scope;
@@ -458,32 +473,3 @@ type_alloc :: ($T: Type) -> LiuType, *T {
 
     return liu_type, ptr;
 }
-
-/*
-    // Flags for when the exprs become typed
-    TypeFlags :: enum_flags u8 {
-        // this prevents circular dependencies for single-threaded comptime
-        // execution. Could it also prevent deadlocking for multi-threaded
-        // execution?
-        CHECKING_IN_PROGRESS;
-
-        IS_TYPED; // for expressions that are done with type checking
-        IS_CONST; // for expressions that have a valid constant value
-
-        // for variables whose address is referenced. Eventually this should also
-        // cover variables whose type is too large for a register. Either way
-        // it means that the baseline storage for the variable MUST be in memory.
-        DECL_IS_REFERENCED;
-    }
-
-    ConstantValue :: union {
-        as_s64 : s64 = 0;
-        as_type : LiuType = ---;
-
-        // @Note this is a bit weird, but it seems fine. Like if it's constant,
-        // You should be able to use it just like a function pointer in C, and
-        // its runtime value should be generate-able from the AST.
-        as_proc_ptr : *ProcedureExpr = ---;
-    }
-    #assert(size_of(ConstantValue) == 8);
-*/
