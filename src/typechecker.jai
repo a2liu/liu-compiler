@@ -6,7 +6,7 @@
 #import "ast";
 #import "tir";
 
-check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
+check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
     comptime := decl_node.kind == .COMPTIME_DECLARATION;
     declared_type := UNINITIALIZED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
@@ -14,18 +14,30 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
         type_scope : Scope;
         init_scoped(*type_scope, scope, comptime = true);
 
-        unwrap(check_expr(type_decl, *type_scope));
-        declared_type = unwrap(as_type_expr(type_decl));
+        type_idx := unwrap(check_expr(type_decl, *type_scope));
+        type_op := index_to_op(*type_scope, type_idx);
+
+        if type_op.kind != .CONST
+            throw(type_decl, "type declaration wasn't constant");
+
+        const_type_op := cast(*ConstOp) type_op;
+        if const_type_op.expr_type != TYPE_TYPE
+            throw(type_decl, "expected a type here");
+
+        declared_type = const_type_op.value.as_type;
     }
 
     value_type := UNINITIALIZED_TYPE;
     value := decl_node.value_nullable;
     // assert(value != null); // @Todo this should probably be allowed, idk
+    value_idx : s32 = -1;
+    value_op : *Opcode = null;
     if value != null {
         value_scope : Scope;
         init_scoped(*value_scope, scope, comptime);
-        unwrap(check_expr(value, *value_scope, expected_type = declared_type));
-        value_type = unwrap(type_of_expr(value));
+        value_idx = unwrap(check_expr(value, *value_scope, expected_type = declared_type));
+        value_op = index_to_op(*value_scope, value_idx);
+        value_type = value_op.expr_type;
     }
 
     declared_type = unwrap(check_type_transition(decl_node, declared_type, value_type));
@@ -34,17 +46,16 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
     ident := decl_node.idents[0];
 
     if comptime {
-        if !is_const(value)
+        if value_op.kind != .CONST
             throw(value, "value used in constant context wasn't a constant");
 
+        const_op := cast(*ConstOp) value_op;
         if Types[declared_type].kind == {
         case .TYPE; #through;
         case .INTEGER; #through;
         case .PROC;
-            set_type(ident, declared_type);
-            ident.const_value = value.const_value;
-            ident.type_flags |= .IS_CONST;
-            ret(decl_node, VOID_TYPE);
+            // @Todo
+            ret();
 
         case .POINTER;
             throw(decl_node, "can't have constant value pointer");
@@ -60,10 +71,11 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(void) {
         throw(decl_node, "redeclared identifier");
 
     // @Todo this needs to change when i add supporting compile-time declarations
-    set_type(ident, declared_type);
-    table_add(*scope.runtime_variables, ident.symbol, ident);
+    // @Todo
+    // set_type(ident, declared_type);
+    // table_add(*scope.runtime_variables, ident.symbol, ident);
 
-    ret(decl_node, VOID_TYPE);
+    ret();
 }
 
 // @Todo exact means the types must be semantically equivalent, and you're not allowed to generate
@@ -165,10 +177,10 @@ check_file :: (file: *FileExpr) -> Result(*TirProc) {
     global_scope : CodegenScope;
     init_scoped(*global_scope);
     unwrap(check_scope(file.statements, *global_scope), success_type = *TirProc);
-    return ok(global_scope.codegen);
+    return ok(global_scope.tir_proc);
 }
 
-check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
+check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(s32) {
     scope : Scope;
     init_scoped(*scope, parent_scope);
     unwrap(check_scope(block.statements, *scope));
@@ -176,36 +188,36 @@ check_block :: (block: *BlockExpr, parent_scope: *Scope) -> Result(void) {
     ret();
 }
 
-check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(void) {
+check_proc :: (proc_expr: *ProcedureExpr, parent_scope: *Scope) -> Result(s32) {
     params_scope : Scope;
     init_scoped(*params_scope, parent_scope, true); // @Todo get working closures
     unwrap(check_scope(cast([] *Expr) proc_expr.params, *params_scope));
     param_types : [..] LiuType;
     defer array_free(param_types);
 
-    for decl: proc_expr.params {
-        for decl.idents {
-            param_type := unwrap(type_of_expr(it));
-            array_add(*param_types, param_type);
-        }
-    }
+    // for decl: proc_expr.params {
+    //     for decl.idents {
+    //         param_type := unwrap(type_of_expr(it));
+    //         array_add(*param_types, param_type);
+    //     }
+    // }
 
     // @Todo How do we do parameterized return types? Scan beforehand? Lazy errors?
     // probably scan beforehand.
-    unwrap(check_expr(proc_expr.return_type, *params_scope));
-    return_type := unwrap(as_type_expr(proc_expr.return_type));
-    proc_type := Types.proc(..param_types, return_type = return_type);
+    // unwrap(check_expr(proc_expr.return_type, *params_scope));
+    // return_type := unwrap(as_type_expr(proc_expr.return_type));
+    // proc_type := Types.proc(..param_types, return_type = return_type);
 
-    proc_scope : ProcScope;
-    init_scoped(*proc_scope, *params_scope, return_type);
-    unwrap(check_expr(proc_expr.body, *proc_scope));
+    // proc_scope : ProcScope;
+    // init_scoped(*proc_scope, *params_scope, return_type);
+    // unwrap(check_expr(proc_expr.body, *proc_scope));
 
-    // @Todo idk man
-    const_proc(proc_expr, proc_type);
+    // // @Todo idk man
+    // const_proc(proc_expr, proc_type);
     ret();
 }
 
-check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
+check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(s32) {
     for stmt: stmts {
         if stmt.kind != .COMPTIME_DECLARATION       continue;
 
@@ -228,9 +240,9 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(void) {
         if stmt.kind != .COMPTIME_DECLARATION       continue;
 
         decl := cast(*DeclarationExpr) stmt;
-        if !is_typed(decl) {
-            unwrap(check_decl(decl, scope));
-        }
+        // if !is_typed(decl) {
+        //     unwrap(check_decl(decl, scope));
+        // }
     }
 
 
@@ -255,38 +267,27 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         ret();
 
     case .NONE;
-        ret(expr, VOID_TYPE);
+        // @Todo
+        ret();
 
     case .INTEGER;
         literal := cast(*IntegerExpr) expr;
-        literal.type_flags |= .IS_CONST;
-        ret(literal, S64_TYPE);
+        // @Todo
+        ret();
 
     case .IDENT;
         ident := cast(*IdentExpr) expr;
         decl := unwrap(search_scope(scope, ident.symbol));
-        if !decl
+        if decl < 0
             throw(ident, "unrecognized identifier");
 
-        ident.declaration = decl;
-        decl_type := unwrap(type_of_expr(decl));
-        if is_const(decl) {
-            ident.type_flags |= .IS_CONST;
-            ident.const_value = decl.const_value;
-
-            ret(ident, decl_type);
-        }
-
-        if referenced {
-            decl.type_flags |= .DECL_IS_REFERENCED;
-        }
-
-        ret(ident, decl_type);
+        ret(decl);
 
     case .CALL;
         call := cast(*CallExpr) expr;
-        unwrap(check_expr(call.callee, scope));
-        callee_type := unwrap(type_of_expr(call.callee));
+        callee_op := unwrap(check_expr(call.callee, scope));
+
+        callee_type := index_to_op(scope, callee_op).expr_type;
         callee_info := Types[callee_type];
         if callee_info.kind != .PROC
             throw(call.callee, "you're calling something that's not a procedure");
@@ -298,15 +299,16 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         for index: 0..(proc_info.params.count - 1) {
             expected_param_type := proc_info.params[index];
             param := call.params[index];
-            unwrap(check_expr(param, scope));
+            param_op := unwrap(check_expr(param, scope));
 
-            param_type := unwrap(type_of_expr(param));
+            param_type := index_to_op(scope, param_op).expr_type;
             type_result := check_type_transition(param, expected_param_type, param_type);
             inferred_type := unwrap(type_result);
             assert(inferred_type == expected_param_type);
         }
 
-        ret(call, proc_info.return_type);
+        // @Todo
+        ret();
 
     case .RETURN;
         return_type_ptr := scope_return_type(scope);
@@ -315,59 +317,58 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
 
         return_expr := cast(*ReturnExpr) expr;
         value := return_expr.value;
-        unwrap(check_expr(value, scope));
-        value_type := unwrap(type_of_expr(value));
+        value_op := unwrap(check_expr(value, scope));
+        value_type := index_to_op(scope, value_op).expr_type;
 
         return_type := << return_type_ptr;
         type_result := check_type_transition(value, return_type, value_type);
         inferred_type := unwrap(type_result);
         assert(inferred_type == return_type);
 
-        ret(return_expr, VOID_TYPE);
+        // @Todo
+        ret();
 
     case .REF;
         ref_expr := cast(*UnaryExpr) expr;
-        unwrap(check_expr(ref_expr.base, scope, referenced = true));
-        referenced_type := unwrap(type_of_expr(ref_expr.base));
+        referenced_idx := unwrap(check_expr(ref_expr.base, scope, referenced = true));
+        referenced_op := index_to_op(scope, referenced_idx);
+        referenced_type := referenced_op.expr_type;
 
-        if is_const(ref_expr.base) {
-            if referenced_type == TYPE_TYPE {
-                expr_type := Types.pointer(ref_expr.base.const_value.as_type);
-                ret_type(ref_expr, expr_type);
-            }
-
-            // @Todo This should be implemented by copying the constant value
-            throw(ref_expr, "can't take reference to constant value");
+        if referenced_op.kind == .CONST && referenced_type == TYPE_TYPE {
+            const_op := cast(*ConstOp) referenced_op;
+            expr_type := Types.pointer(const_op.value.as_type);
+            const_op.value.as_type = expr_type;
+            ret(referenced_idx);
         }
 
         expr_type := Types.pointer(referenced_type);
-        ret(ref_expr, expr_type);
+        ret();
 
     case .DEREF;
         deref_expr := cast(*UnaryExpr) expr;
-        unwrap(check_expr(deref_expr.base, scope));
-        pointer_type := unwrap(type_of_expr(deref_expr.base));
-        ty_info := Types[pointer_type];
-        if ty_info.kind != .POINTER
-            throw(deref_expr.base, "can't dereference this, it's not a pointer");
+        // unwrap(check_expr(deref_expr.base, scope));
+        // pointer_type := unwrap(type_of_expr(deref_expr.base));
+        // ty_info := Types[pointer_type];
+        // if ty_info.kind != .POINTER
+        //     throw(deref_expr.base, "can't dereference this, it's not a pointer");
 
-        pointer_ty_info := cast(*TypeInfoPointer) ty_info;
-        base_type := pointer_ty_info.pointing_to;
+        // pointer_ty_info := cast(*TypeInfoPointer) ty_info;
+        // base_type := pointer_ty_info.pointing_to;
 
-        ret(deref_expr, base_type);
+        ret();
 
     case .ADD;
         // @Todo this doesn't really scale, nor does it really check whether or
         // not the given type can take this operator. IDK man we'll see i guess.
         plus := cast(*BinaryExpr) expr;
-        unwrap(check_expr(plus.left, scope));
-        unwrap(check_expr(plus.right, scope));
-        left, right := plus.left, plus.right;
-        l_ty, r_ty := unwrap(type_of_expr(left)), unwrap(type_of_expr(right));
-        expr_type := unwrap(check_type_transition(left, expected_type, l_ty));
-        expr_type = unwrap(check_type_transition(left, expr_type, r_ty));
+        // unwrap(check_expr(plus.left, scope));
+        // unwrap(check_expr(plus.right, scope));
+        // left, right := plus.left, plus.right;
+        // l_ty, r_ty := unwrap(type_of_expr(left)), unwrap(type_of_expr(right));
+        // expr_type := unwrap(check_type_transition(left, expected_type, l_ty));
+        // expr_type = unwrap(check_type_transition(left, expr_type, r_ty));
 
-        ret(plus, expr_type);
+        ret();
 
     case .PROCEDURE;
         proc_expr := cast(*ProcedureExpr) expr;
@@ -375,7 +376,6 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         ret();
 
     case .COMPTIME_DECLARATION;
-        assert(is_typed(expr));
         ret();
 
     case .DECLARATION;
@@ -387,57 +387,53 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         assign_expr := cast(*AssignmentExpr) expr;
         tc_result := check_assignment(assign_expr.target, assign_expr.value, scope);
         unwrap(tc_result);
-        ret(assign_expr, VOID_TYPE);
+        ret();
     }
 
 
     message := sprint("% expressions are unimplemented", expr.kind);
     throw(expr, message);
-    ret(expr, UNINITIALIZED_TYPE); // for control flow warnings
+    ret(); // for control flow warnings
 }
 
-check_assignment :: (target: *Expr, expr: *Expr, scope: *Scope) -> Result(void) {
+check_assignment :: (target: *Expr, expr: *Expr, scope: *Scope) -> Result(s32) {
     if target.kind == {
     case .IDENT;
         ident := cast(*IdentExpr) target;
-        decl := unwrap(search_scope(scope, ident.symbol));
-        if !decl
+        decl_idx := unwrap(search_scope(scope, ident.symbol));
+        if decl_idx < 0
             throw(ident, "unrecognized identifier");
         // @Todo we could declare the variable here instead, if we really wanted to
 
-        if is_const(decl)
+        decl_op := index_to_op(scope, decl_idx);
+        if decl_op.kind == .CONST
             throw(ident, "can't assign to this, it was declared as constant");
 
-        ident.declaration = decl;
-        decl_type := unwrap(type_of_expr(decl));
-
-        unwrap(check_expr(expr, scope, expected_type = decl_type));
-        expr_ty := unwrap(type_of_expr(expr));
-        tc_result := check_type_transition(target, decl_type, expr_ty);
-        expr_type := unwrap(tc_result);
-        assert(decl_type == expr_type);
-
-        ret(ident, decl_type);
+        unwrap(check_expr(expr, scope, expected_type = decl_op.expr_type));
+        // expr_ty := unwrap(type_of_expr(expr));
+        // tc_result := check_type_transition(target, decl_type, expr_ty);
+        // expr_type := unwrap(tc_result);
+        // assert(decl_type == expr_type);
+        ret();
 
     case .DEREF;
         deref_expr := cast(*UnaryExpr) target;
 
-        unwrap(check_expr(deref_expr.base, scope));
-        pointer_type := unwrap(type_of_expr(deref_expr.base));
-        ty_info := Types[pointer_type];
-        if ty_info.kind != .POINTER
-            throw(deref_expr.base, "can't dereference this, it's not a pointer");
+        // unwrap(check_expr(deref_expr.base, scope));
+        // pointer_type := unwrap(type_of_expr(deref_expr.base));
+        // ty_info := Types[pointer_type];
+        // if ty_info.kind != .POINTER
+        //     throw(deref_expr.base, "can't dereference this, it's not a pointer");
 
-        pointer_ty_info := cast(*TypeInfoPointer) ty_info;
-        base_type := pointer_ty_info.pointing_to;
+        // pointer_ty_info := cast(*TypeInfoPointer) ty_info;
+        // base_type := pointer_ty_info.pointing_to;
 
-        unwrap(check_expr(expr, scope, expected_type = base_type));
-        expr_ty := unwrap(type_of_expr(expr));
-        tc_result := check_type_transition(target, base_type, expr_ty);
-        expr_type := unwrap(tc_result);
-        assert(base_type == expr_type);
+        // opcode := unwrap(check_expr(expr, scope, expected_type = base_type));
+        // tc_result := check_type_transition(target, base_type, expr_ty);
+        // expr_type := unwrap(tc_result);
+        // assert(base_type == expr_type);
 
-        ret(deref_expr, base_type);
+        ret();
     }
 }
 
@@ -469,7 +465,7 @@ search_scope :: (_scope: *Scope, ident: s32) -> Result(s32) {
     }
 
     scope := _scope;
-    tir_proc := Scope.codegen(scope).codegen;
+    tir_proc := Scope.codegen(scope).tir_proc;
     comptime_decl : Scope.ConstDecl;
     comptime_decl, success = table_find(builtin_scope.comptime_variables, ident);
     if success {
@@ -502,10 +498,18 @@ search_scope :: (_scope: *Scope, ident: s32) -> Result(s32) {
 
         only_comptime = only_comptime || scope.comptime_capture;
         scope = scope.parent;
-        tir_proc = Scope.codegen(scope).codegen;
+        tir_proc = Scope.codegen(scope).tir_proc;
     }
 
-    return ok(cast(s32) -1);
+    ret();
+}
+
+ret :: () #expand {
+    `return ok(cast(s32) -1);
+}
+
+ret :: (op: s32) #expand {
+    `return ok(op);
 }
 
 throw :: (value: *$T/interface Span, message: string, loc := #caller_location) #expand {
@@ -528,14 +532,4 @@ unwrap :: (result: Result($T), $success_type := s32) -> T #expand
 unwrap :: (result: Result(void), $success_type := s32) #expand {
     err := read(result);
     if err      `return error(err, success_type = success_type);
-}
-
-const_proc :: (proc_expr: *ProcedureExpr, ty: LiuType) {
-    assert(!is_typed(proc_expr));
-
-    proc_expr.type = ty;
-    proc_expr.type_flags |= .IS_TYPED;
-    proc_expr.type_flags &= ~.CHECKING_IN_PROGRESS;
-    proc_expr.type_flags |= .IS_CONST;
-    proc_expr.const_value.as_proc_ptr = proc_expr;
 }

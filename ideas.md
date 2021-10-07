@@ -178,4 +178,8 @@ The following extensions to the language hopefully can be done in the language i
   enums so that this can be easier. And maybe when you enum classes in the same
   inheritance hierarchy together, the result uses the inheritance hierarchy tag
   instead of making a new one.
+- The `/` prefix begins path parsing? Somethin like that idk. Some kind of lightweight
+  syntax for declaring a path. Maybe strings are also paths?
+- Also, format strings are totally possible without having to make the lexer call
+  into the parser, whoever told me it had to be like that was a fucking liar
 

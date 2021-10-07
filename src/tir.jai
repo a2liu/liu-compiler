@@ -194,6 +194,10 @@ bb_alloc :: (bb: *TirProc, $T: Type) -> *T {
     return pointer;
 }
 
+alloc_op :: (bb: *Scope, $T: Type, spanned: *$B/interface Span) -> *T {
+    return alloc_op(Scope.codegen(bb).tir_proc, T, spannd);
+}
+
 alloc_op :: (bb: *TirProc, $T: Type, spanned: *$B/interface Span) -> *T {
     #assert(inherits_from(T, Opcode));
 
@@ -220,6 +224,10 @@ alloc_op :: (bb: *TirProc, $T: Type, spanned: *$B/interface Span) -> *T {
     return output;
 }
 
+index_to_op :: (bb: *Scope, idx: s32) -> *Opcode {
+    return index_to_op(Scope.codegen(bb).tir_proc, idx);
+}
+
 index_to_op :: (bb: *TirProc, idx: s32) -> *Opcode {
     assert(idx >= -1);
     if idx == -1 {
@@ -240,20 +248,16 @@ op_to_index :: (bb: *TirProc, op: *Opcode) -> s32 {
 }
 
 for_expansion :: (iter: *TirProc, body: Code, flags: For_Flags) #expand {
+    #assert(!flags);
     if iter.last == -1      return;
 
-    REVERSE :: (flags & .REVERSE) != 0;
-    #if REVERSE {
-    index := iter.last;
-    } else {
     index := iter.first;
-    }
 
     pointer := index_to_op(iter, index);
     `it : *Opcode = ---;
     `it_index : void;
 
-    for <=REVERSE op, _unused: pointer {
+    for op, _unused: pointer {
         op_to_index(iter, op);
         it = op;
 
@@ -263,17 +267,14 @@ for_expansion :: (iter: *TirProc, body: Code, flags: For_Flags) #expand {
 }
 
 for_expansion :: (iter: *Opcode, body: Code, flags: For_Flags) #expand {
+    #assert(!flags);
     `it := iter;
     `it_index : void;
 
     while it {
         #insert body;
 
-        #if flags & .REVERSE {
-            it = it.previous;
-        } else {
-            it = it.next;
-        }
+        it = it.next;
     }
 }
 
@@ -373,7 +374,6 @@ Scope :: struct {
         }
     }
 
-
     init :: (scope: *Scope, parent : *Scope, comptime : bool) {
         init(*scope.comptime_variables);
         init(*scope.runtime_variables);
@@ -399,14 +399,14 @@ init_scoped :: (scope: *Scope, parent : *Scope = null, comptime := false) #expan
 CodegenScope :: struct {
     using __base : Scope;
     __base.kind = .CODEGEN;
-    codegen : *TirProc; // @Todo this guy leaks big time
+    tir_proc : *TirProc; // @Todo this guy leaks big time
     deferred_procs : [..] *TirProc;
 }
 
 init_scoped :: (scope: *CodegenScope, parent: *Scope, return_type: LiuType) #expand {
     Scope.init(*scope._base, parent, false);
-    scope.codegen = New(TirProc, initialized = false);
-    << scope.codegen = TirProc.make();
+    scope.tir_proc = New(TirProc, initialized = false);
+    << scope.tir_proc = TirProc.make();
     remember_allocators(*scope.deferred_procs);
 
     `defer Scope.uninit(scope);
@@ -421,8 +421,8 @@ ProcScope :: struct {
 
 init_scoped :: (scope: *ProcScope, parent: *Scope, return_type: LiuType) #expand {
     Scope.init(*scope._base, parent, false);
-    scope.codegen = New(TirProc, initialized = false);
-    << scope.codegen = TirProc.make();
+    scope.tir_proc = New(TirProc, initialized = false);
+    << scope.tir_proc = TirProc.make();
     remember_allocators(*scope.deferred_procs);
     scope.return_type = return_type;
 

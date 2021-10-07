@@ -10,7 +10,7 @@
 #import "parser";
 #import "tir";
 #import "utils";
-// #import "typechecker";
+#import "typechecker";
 // #import "bytecode";
 // #import "moving_gc";
 
