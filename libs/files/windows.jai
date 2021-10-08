@@ -31,7 +31,7 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
 
             error := GetLastError();
             log_error("Unable to open directory'%': %.\n", dir_name, error);
-            return false;
+            return;
         }
 
         while true {
@@ -51,7 +51,11 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                     if visit_directories {
                         it.is_directory = true;
                         it.filetime = FILETIME_to_filetime(find_data.ftLastWriteTime);
-                        #insert (break = { cursor = directories.count; break; }, continue = continue) body;
+                        #insert (break = { cursor = directories.count; break; },
+                                 continue = {
+                                    success := FindNextFileW(handle, *find_data);
+                                    if !success break;
+                                    continue; }) body;
                     }
 
                     if it.descend_into_directory  array_add(*directories, copy_string(full_name));
@@ -60,7 +64,11 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
                 if visit_files {
                     it.is_directory = false;
                     it.filetime = FILETIME_to_filetime(find_data.ftLastWriteTime);
-                    #insert (break = { cursor = directories.count; break; }, continue = continue) body;
+                    #insert (break = { cursor = directories.count; break; },
+                             continue = {
+                                success := FindNextFileW(handle, *find_data);
+                                if !success break;
+                                continue; }) body;
                 }
             }
 
@@ -70,8 +78,6 @@ for_expansion :: (using iter: *VisitFileIter, body: Code, flags: For_Flags) #exp
 
         FindClose(handle);
     }
-
-    return true;
 }
 
 #scope_file
