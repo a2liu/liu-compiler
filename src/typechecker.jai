@@ -81,6 +81,8 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
 // @Todo exact means the types must be semantically equivalent, and you're not allowed to generate
 // a type transition
 check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, $exact := false) -> Result(LiuType) {
+    // @Todo eventually this should probably be just "value_type == UNSPECIFIED"
+    // and we'll use type variables to handle this stuff.
     if value_type == UNINITIALIZED_TYPE && target == UNINITIALIZED_TYPE
         assert(false, "ya really don't know what type it is eh?");
 
