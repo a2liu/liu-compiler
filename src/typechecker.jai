@@ -55,6 +55,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
         case .INTEGER; #through;
         case .PROC;
             // @Todo
+
             ret();
 
         case .POINTER;
@@ -72,7 +73,6 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
 
     // @Todo this needs to change when i add supporting compile-time declarations
     // @Todo
-    // set_type(ident, declared_type);
     // table_add(*scope.runtime_variables, ident.symbol, ident);
 
     ret();
@@ -125,8 +125,8 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, 
             return error(node, message, success_type = LiuType);
         }
 
-        target_info_ptr := cast(*TypeInfoPointer) target_info;
-        value_info_ptr := cast(*TypeInfoPointer) value_info;
+        target_info_ptr := cast(*LiuTypeInfoPointer) target_info;
+        value_info_ptr := cast(*LiuTypeInfoPointer) value_info;
 
         type_result := check_type_transition(node, target_info_ptr.pointing_to,
                                           value_info_ptr.pointing_to, exact = true);
@@ -143,8 +143,8 @@ check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, 
             return error(node, message, success_type = LiuType);
         }
 
-        target_info_proc := cast(*TypeInfoProcedure) target_info;
-        value_info_proc := cast(*TypeInfoProcedure) value_info;
+        target_info_proc := cast(*LiuTypeInfoProcedure) target_info;
+        value_info_proc := cast(*LiuTypeInfoProcedure) value_info;
 
         output_ty_result := check_type_transition(node, target_info_proc.return_type,
                                                 value_info_proc.return_type, exact = true);
@@ -292,7 +292,7 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         if callee_info.kind != .PROC
             throw(call.callee, "you're calling something that's not a procedure");
 
-        proc_info := cast(*TypeInfoProcedure) callee_info;
+        proc_info := cast(*LiuTypeInfoProcedure) callee_info;
         if proc_info.params.count != call.params.count // @Todo this doesn't handle optional arguments
             throw(call, "wrong number of arguments for this procedure call");
 
@@ -352,7 +352,7 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         // if ty_info.kind != .POINTER
         //     throw(deref_expr.base, "can't dereference this, it's not a pointer");
 
-        // pointer_ty_info := cast(*TypeInfoPointer) ty_info;
+        // pointer_ty_info := cast(*LiuTypeInfoPointer) ty_info;
         // base_type := pointer_ty_info.pointing_to;
 
         ret();
@@ -425,7 +425,7 @@ check_assignment :: (target: *Expr, expr: *Expr, scope: *Scope) -> Result(s32) {
         // if ty_info.kind != .POINTER
         //     throw(deref_expr.base, "can't dereference this, it's not a pointer");
 
-        // pointer_ty_info := cast(*TypeInfoPointer) ty_info;
+        // pointer_ty_info := cast(*LiuTypeInfoPointer) ty_info;
         // base_type := pointer_ty_info.pointing_to;
 
         // opcode := unwrap(check_expr(expr, scope, expected_type = base_type));
@@ -477,7 +477,7 @@ search_scope :: (_scope: *Scope, ident: s32) -> Result(s32) {
     while scope {
         if !only_comptime {
             decl, success := table_find(scope.runtime_variables, ident);
-            if success      return ok(op_to_index(tir_proc, decl));
+            if success      return ok(decl.decl_op);
         }
 
         comptime_decl := table_find_pointer(scope.comptime_variables, ident);

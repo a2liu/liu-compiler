@@ -13,7 +13,7 @@ TYPE_TYPE : LiuType : 3;
 
 LiuType :: #type,distinct s32;
 
-TypeInfo :: struct {
+LiuTypeInfo :: struct {
     Kind :: enum u8 {
         UNINITIALIZED;
         VOID;
@@ -29,17 +29,17 @@ TypeInfo :: struct {
     defn_end : s32 = -1;
 }
 
-// @Rename ProcedureTypeInfo?
-TypeInfoProcedure :: struct {
-    using _base : TypeInfo;
+// @Rename ProcedureLiuTypeInfo?
+LiuTypeInfoProcedure :: struct {
+    using _base : LiuTypeInfo;
     _base.kind = .PROC;
     return_type : LiuType;
     // @Todo this should probably be DeclarationIdent
     params : [] LiuType;
 }
 
-TypeInfoPointer :: struct {
-    using _base : TypeInfo;
+LiuTypeInfoPointer :: struct {
+    using _base : LiuTypeInfo;
     _base.kind = .POINTER;
     pointing_to : LiuType;
 }
@@ -105,13 +105,14 @@ ConstOp :: struct {
     }
 }
 
+// This isn't a real op. Maybe it shouldn't even inherit from opcode, idk
 ConstDeclareOp :: struct {
     using _base : ConstOp;
     _base.kind = .CONST_DECLARE;
     symbol : s32;
 }
 
-// This isn't really a real op. You're supposed to just use its value pointer.
+// This is a no-op; it saves information about declarations
 DeclareOp :: struct {
     using _base : Opcode;
     _base.kind = .DECLARE;
@@ -328,15 +329,14 @@ tir_init :: () {
         return ptr;
     }
 
-    none_type := builtin_type(VOID_TYPE, TypeInfo);
+    none_type := builtin_type(VOID_TYPE, LiuTypeInfo);
     none_type.kind = .VOID;
 
-    int_type := builtin_type(S64_TYPE, TypeInfo);
+    int_type := builtin_type(S64_TYPE, LiuTypeInfo);
     int_type.kind = .INTEGER;
 
-    type_type := builtin_type(TYPE_TYPE, TypeInfo);
+    type_type := builtin_type(TYPE_TYPE, LiuTypeInfo);
     type_type.kind = .TYPE;
-
 }
 
 Scope :: struct {
@@ -354,9 +354,14 @@ Scope :: struct {
         value: *ConstDeclareOp = null;
     }
 
+    DeclInfo :: struct {
+        // tir: *TirProc; // @Todo will eventually need to track this too
+        decl_op: s32;
+    }
+
     kind : Kind = .BASE;
     comptime_variables : Table(s32, ConstDecl);
-    runtime_variables : Table(s32, *DeclareOp);
+    runtime_variables : Table(s32, DeclInfo);
     parent: *Scope = null;
     codegen_parent : *CodegenScope = null;
     comptime_capture := false;
@@ -435,7 +440,7 @@ Types : struct {
     proc :: (params: .. LiuType, return_type : LiuType) -> LiuType {
         push_allocator(bucket_allocator, *_static_buckets);
 
-        proc_type, ty_info := type_alloc(TypeInfoProcedure);
+        proc_type, ty_info := type_alloc(LiuTypeInfoProcedure);
         ty_info.params = array_copy(params);
         ty_info.return_type = return_type;
 
@@ -445,14 +450,14 @@ Types : struct {
     pointer :: (pointing_to: LiuType) -> LiuType {
         push_allocator(bucket_allocator, *_static_buckets);
 
-        pointer_type, ty_info := type_alloc(TypeInfoPointer);
+        pointer_type, ty_info := type_alloc(LiuTypeInfoPointer);
         ty_info.pointing_to = pointing_to;
 
         return pointer_type;
     }
 };
 
-operator [] :: (db: type_of(Types), ty: LiuType) -> *TypeInfo {
+operator [] :: (db: type_of(Types), ty: LiuType) -> *LiuTypeInfo {
     assert(ty > 0);
     return _types_array[cast(s32)(ty - 1)];
 }
@@ -461,15 +466,26 @@ operator [] :: (db: type_of(Types), ty: LiuType) -> *TypeInfo {
 
 // comptime builtins are things like s64
 _static_buckets : BucketList = ---;
-_types_array : [..] *TypeInfo;
+_types_array : [..] *LiuTypeInfo;
 
 type_alloc :: ($T: Type) -> LiuType, *T {
     push_allocator(bucket_allocator, *_static_buckets);
-    #assert(inherits_from(T, TypeInfo));
+    #assert(inherits_from(T, LiuTypeInfo));
     ptr := New(T);
     array_add(*_types_array, ptr);
 
     liu_type := cast(LiuType) _types_array.count;
 
     return liu_type, ptr;
+}
+
+const_decl_alloc :: (const_value: *ConstOp) -> *ConstDeclareOp {
+    push_allocator(bucket_allocator, *_static_buckets);
+
+    ptr := New(ConstDeclareOp);
+    ptr.span_begin = -1;
+    ptr.expr_type = const_value.expr_type;
+    ptr.value = const_value.value;
+
+    return ptr;
 }

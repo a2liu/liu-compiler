@@ -182,4 +182,14 @@ The following extensions to the language hopefully can be done in the language i
   syntax for declaring a path. Maybe strings are also paths?
 - Also, format strings are totally possible without having to make the lexer call
   into the parser, whoever told me it had to be like that was a fucking liar
+- Include async stuff? It gets hella slow the more nested async calls there are.
+  Maybe just like, make it easy to do stack manipulation stuff? And people can
+  write their own whatevers. Or maybe there's no async, and everything is just a
+  normal function call, like Go, but it returns a handle that you can choose to
+  block on if you feel like it. We can't really do callbacks because they don't
+  really make sense with threads. I guess we bake in an event loop? And synchronization
+  primitives for that event loop? How else can we do asynchrony?
+- Asynchrony might end up only needing really really simple stuff; I feel like
+  having full on queues and shit for mutexes and whatnot is ridiculous, that you
+  could do dirt simple stuff. IDK yet though.
 
