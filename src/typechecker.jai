@@ -8,6 +8,13 @@
 
 check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
     comptime := decl_node.kind == .COMPTIME_DECLARATION;
+    if comptime {
+        for ident: decl_node.idents {
+            ptr := table_find_pointer(scope.comptime_variables, ident.symbol);
+            ptr.checking = true;
+        }
+    }
+
     declared_type := UNINITIALIZED_TYPE;
     type_decl := decl_node.type_declaration_nullable;
     if type_decl {
@@ -29,15 +36,12 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
 
     value_type := UNINITIALIZED_TYPE;
     value := decl_node.value_nullable;
-    // assert(value != null); // @Todo this should probably be allowed, idk
     value_idx : s32 = -1;
-    value_op : *Opcode = null;
     if value != null {
         value_scope : Scope;
         init_scoped(*value_scope, scope, comptime);
         value_idx = unwrap(check_expr(value, *value_scope, expected_type = declared_type));
-        value_op = index_to_op(*value_scope, value_idx);
-        value_type = value_op.expr_type;
+        value_type = index_to_op(scope, value_idx).expr_type;
     }
 
     declared_type = unwrap(check_type_transition(decl_node, declared_type, value_type));
@@ -46,6 +50,7 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
     ident := decl_node.idents[0];
 
     if comptime {
+        value_op := index_to_op(scope, value_idx);
         if value_op.kind != .CONST
             throw(value, "value used in constant context wasn't a constant");
 
@@ -54,8 +59,11 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
         case .TYPE; #through;
         case .INTEGER; #through;
         case .PROC;
-            // @Todo
+            decl := const_decl_alloc(const_op, ident);
+            decl.symbol = ident.symbol;
 
+            ptr := table_find_pointer(scope.comptime_variables, ident.symbol);
+            ptr.value = decl;
             ret();
 
         case .POINTER;
@@ -71,15 +79,20 @@ check_decl :: (decl_node: *DeclarationExpr, scope: *Scope) -> Result(s32) {
     if found
         throw(decl_node, "redeclared identifier");
 
-    // @Todo this needs to change when i add supporting compile-time declarations
-    // @Todo
-    // table_add(*scope.runtime_variables, ident.symbol, ident);
+    decl_op := alloc_op(scope, DeclOp, ident);
+    decl_op.symbol = ident.symbol;
+    decl_op.value = index_to_op(scope, value_idx);
+
+    decl_info : Scope.DeclInfo;
+    decl_info.decl_op = op_to_index(scope, decl_op);
+    table_add(*scope.runtime_variables, ident.symbol, decl_info);
 
     ret();
 }
 
 // @Todo exact means the types must be semantically equivalent, and you're not allowed to generate
 // a type transition
+// @Todo eventually this'll probably have to output TIR to do the actual transition
 check_type_transition :: (node: *$T/Expr, target: LiuType, value_type: LiuType, $exact := false) -> Result(LiuType) {
     // @Todo eventually this should probably be just "value_type == UNSPECIFIED"
     // and we'll use type variables to handle this stuff.
@@ -242,9 +255,7 @@ check_scope :: (stmts: [] *Expr, scope: *Scope) -> Result(s32) {
         if stmt.kind != .COMPTIME_DECLARATION       continue;
 
         decl := cast(*DeclarationExpr) stmt;
-        // if !is_typed(decl) {
-        //     unwrap(check_decl(decl, scope));
-        // }
+        unwrap(check_decl(decl, scope));
     }
 
 
@@ -269,13 +280,15 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         ret();
 
     case .NONE;
-        // @Todo
+        // @Todo need to do type variables to support this well
         ret();
 
     case .INTEGER;
         literal := cast(*IntegerExpr) expr;
-        // @Todo
-        ret();
+        int_op := alloc_op(scope, LiteralS64Op, literal);
+        int_op.value = literal.value;
+
+        ret(op_to_index(scope, int_op));
 
     case .IDENT;
         ident := cast(*IdentExpr) expr;
@@ -298,6 +311,10 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         if proc_info.params.count != call.params.count // @Todo this doesn't handle optional arguments
             throw(call, "wrong number of arguments for this procedure call");
 
+        params : [..] s32;
+        array_reserve(*params, proc_info.params.count);
+        defer array_free(params);
+
         for index: 0..(proc_info.params.count - 1) {
             expected_param_type := proc_info.params[index];
             param := call.params[index];
@@ -309,8 +326,16 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
             assert(inferred_type == expected_param_type);
         }
 
+        params_array := tir_array(scope, proc_info.params.count, *~s32 Opcode);
+        for params
+            params_array[it_index] = index_to_op(scope, it);
+
         // @Todo
-        ret();
+        // call_op := alloc_op(scope, CallOp, call);
+        // call_op.proc_ptr = index_to_op(scope, callee_op);
+        // call_op.params = params_array;
+
+        ret(op_to_index(scope, call_op));
 
     case .RETURN;
         return_type_ptr := scope_return_type(scope);
@@ -459,7 +484,7 @@ search_scope :: (_scope: *Scope, ident: s32) -> Result(s32) {
     decl, success := table_find(builtin_scope.runtime_variables, ident);
     assert(!success); // @Todo should there be something here? Maybe the context?
 
-    copy_const_decl :: (tir: *TirProc, decl: *DeclarationExpr, decl_op: *ConstDeclareOp) -> Result(s32) {
+    copy_const_decl :: (tir: *TirProc, decl: *DeclarationExpr, decl_op: *ConstDeclOp) -> Result(s32) {
         const_op := alloc_op(tir, ConstOp, decl);
         const_op.value = decl_op.value;
         const_op.expr_type = decl_op.expr_type;

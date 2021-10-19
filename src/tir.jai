@@ -106,14 +106,14 @@ ConstOp :: struct {
 }
 
 // This isn't a real op. Maybe it shouldn't even inherit from opcode, idk
-ConstDeclareOp :: struct {
+ConstDeclOp :: struct {
     using _base : ConstOp;
     _base.kind = .CONST_DECLARE;
     symbol : s32;
 }
 
 // This is a no-op; it saves information about declarations
-DeclareOp :: struct {
+DeclOp :: struct {
     using _base : Opcode;
     _base.kind = .DECLARE;
     symbol : s32;
@@ -172,7 +172,11 @@ TirProc :: struct {
     }
 }
 
-bb_alloc_array :: (bb: *TirProc, count: s64, $T: Type) -> [] T {
+tir_array :: (bb: *Scope, count: s64, $T: Type) -> [] T {
+    return tir_array(Scope.codegen(bb), count, T);
+}
+
+tir_array :: (bb: *TirProc, count: s64, $T: Type) -> [] T {
     alloc_size := size_of(T) * count;
     array_reserve(*bb.bytes, bb.bytes.count + alloc_size);
     memory_index := bb.bytes.count;
@@ -196,7 +200,7 @@ bb_alloc :: (bb: *TirProc, $T: Type) -> *T {
 }
 
 alloc_op :: (bb: *Scope, $T: Type, spanned: *$B/interface Span) -> *T {
-    return alloc_op(Scope.codegen(bb).tir_proc, T, spannd);
+    return alloc_op(Scope.codegen(bb).tir_proc, T, spanned);
 }
 
 alloc_op :: (bb: *TirProc, $T: Type, spanned: *$B/interface Span) -> *T {
@@ -236,6 +240,10 @@ index_to_op :: (bb: *TirProc, idx: s32) -> *Opcode {
     }
 
     return cast(*Opcode) *bb.bytes[idx];
+}
+
+op_to_index :: (bb: *Scope, op: *Opcode) -> s32 {
+    return op_to_index(Scope.codegen(bb).tir_proc, op);
 }
 
 op_to_index :: (bb: *TirProc, op: *Opcode) -> s32 {
@@ -296,13 +304,13 @@ tir_init :: () {
     _static_buckets = BucketList.make();
     remember_allocators(*_types_array);
 
-    idents : [..] *ConstDeclareOp;
+    idents : [..] *ConstDeclOp;
     defer array_free(idents);
 
     remember_allocators(*idents);
 
     builtin_type_name :: (symbol: s32, ty: LiuType) #expand {
-        ident := New(ConstDeclareOp);
+        ident := New(ConstDeclOp);
         ident.symbol = symbol;
         ident.span_begin = -1;
         ident.span_length = 0;
@@ -351,7 +359,7 @@ Scope :: struct {
     ConstDecl :: struct {
         checking : bool = false;
         decl : *DeclarationExpr = null;
-        value: *ConstDeclareOp = null;
+        value: *ConstDeclOp = null;
     }
 
     DeclInfo :: struct {
@@ -462,6 +470,18 @@ operator [] :: (db: type_of(Types), ty: LiuType) -> *LiuTypeInfo {
     return _types_array[cast(s32)(ty - 1)];
 }
 
+const_decl_alloc :: (const_value: *ConstOp, spanned: *$B/interface Span) -> *ConstDeclOp {
+    push_allocator(bucket_allocator, *_static_buckets);
+
+    ptr := New(ConstDeclOp);
+    ptr.expr_type = const_value.expr_type;
+    ptr.value = const_value.value;
+    ptr.span_begin = spanned.begin;
+    ptr.span_length = cast(u16) (spanned.end - spanned.begin);
+
+    return ptr;
+}
+
 #scope_file
 
 // comptime builtins are things like s64
@@ -477,15 +497,4 @@ type_alloc :: ($T: Type) -> LiuType, *T {
     liu_type := cast(LiuType) _types_array.count;
 
     return liu_type, ptr;
-}
-
-const_decl_alloc :: (const_value: *ConstOp) -> *ConstDeclareOp {
-    push_allocator(bucket_allocator, *_static_buckets);
-
-    ptr := New(ConstDeclareOp);
-    ptr.span_begin = -1;
-    ptr.expr_type = const_value.expr_type;
-    ptr.value = const_value.value;
-
-    return ptr;
 }
