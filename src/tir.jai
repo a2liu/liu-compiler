@@ -191,7 +191,7 @@ tir_array :: (bb: *TirProc, count: s64, $T: Type) -> [] T {
 }
 
 bb_alloc :: (bb: *TirProc, $T: Type) -> *T {
-    pointer := bb_alloc_array(bb, 1, T).data;
+    pointer := tir_array(bb, 1, T).data;
 
     ini :: initializer_of(T);
     inline ini(pointer);

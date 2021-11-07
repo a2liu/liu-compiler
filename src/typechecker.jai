@@ -335,7 +335,8 @@ check_expr :: (expr: *Expr, scope: *Scope, referenced := false, expected_type :=
         // call_op.proc_ptr = index_to_op(scope, callee_op);
         // call_op.params = params_array;
 
-        ret(op_to_index(scope, call_op));
+        // ret(op_to_index(scope, call_op));
+        ret();
 
     case .RETURN;
         return_type_ptr := scope_return_type(scope);

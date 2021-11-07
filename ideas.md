@@ -192,4 +192,5 @@ The following extensions to the language hopefully can be done in the language i
 - Asynchrony might end up only needing really really simple stuff; I feel like
   having full on queues and shit for mutexes and whatnot is ridiculous, that you
   could do dirt simple stuff. IDK yet though.
+- Compile to JS with React-style extension.
 
