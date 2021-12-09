@@ -193,4 +193,11 @@ The following extensions to the language hopefully can be done in the language i
   having full on queues and shit for mutexes and whatnot is ridiculous, that you
   could do dirt simple stuff. IDK yet though.
 - Compile to JS with React-style extension.
-
+- Transformations by the compiler should be DUMB and PREDICTABLE. No smart stuff.
+  It should be easy to tell what the code will do by reading it. If you want
+  complicated semantics, use metaprogramming.
+- Code type is the same as the function type. You can introspect into passed-in
+  functions as long as they have a compile-time constant code pointer. This is
+  going to be a bit of complexity in the compiler, but it allows libraries to
+  implement smart stuff if they want without users having to write something
+  different for Code and Functions.
