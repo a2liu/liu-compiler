@@ -87,7 +87,7 @@ compiler passes over the bytecode.
 ### Big Ideas (Libraries)
 The following extensions to the language hopefully can be done in the language itself:
 
-- calling convention stuff (? requires use-defined codegen)
+- calling convention stuff (? requires user-defined codegen)
 - Python module as a target (? requires user-defined codegen)
 - User-defined directives, defined in metaprogram before build starts (? might be hard to implement)
 - Stack frame stuff (? might need built-in parts)
