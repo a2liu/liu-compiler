@@ -8,35 +8,29 @@ BucketList :: struct {
         next : *Bucket;
     }
 
-    allocator: Allocator = null;
-    allocator_data: *void = null;
+    allocator: Allocator;
     first: *Bucket = null;
     next: *Bucket = null;
 
     MIN_SIZE :: 64 * 1024 * 1024;
 
-    make :: (size: s64 = MIN_SIZE, allocator: Allocator = null, allocator_data: *void = null) -> BucketList {
+    make :: (size: s64 = MIN_SIZE, allocator: Allocator = context.allocator) -> BucketList {
         buckets : BucketList;
-        init(*buckets, size, allocator, allocator_data);
+        init(*buckets, size, allocator);
         return buckets;
     }
 
-    init :: (buckets: *BucketList, size: s64 = MIN_SIZE, allocator: Allocator = null,
-             allocator_data: *void = null) {
+    init :: (buckets: *BucketList, size: s64 = MIN_SIZE,
+             allocator: Allocator = context.allocator) {
         assert(buckets != null);
         if buckets.first != null       return;
 
-        if allocator == null {
-            buckets.allocator = context.allocator;
-            buckets.allocator_data = context.allocator_data;
-        } else {
-            buckets.allocator = allocator;
-            buckets.allocator_data = allocator_data;
-        }
+        buckets.allocator = allocator;
 
         bucket_size := max(size, MIN_SIZE);
-        memory := NewArray(size_of(Bucket) + bucket_size, u8, allocator = buckets.allocator,
-                           allocator_data = buckets.allocator_data, initialized = false);
+        memory := NewArray(size_of(Bucket) + bucket_size, u8,
+                            allocator = buckets.allocator, initialized = false);
+
         bucket := cast(*Bucket) memory.data;
         bucket.len = bucket_size;
         bucket.idx = align_cost(memory.data);
@@ -48,7 +42,7 @@ BucketList :: struct {
     alloc :: (buckets: *BucketList, size: s64) -> *void {
         assert(buckets != null);
         assert(buckets.first != null, "BucketList must be initialized before using it");
-        push_allocator(buckets.allocator, buckets.allocator_data);
+        push_allocator(buckets.allocator);
 
         alloc_size := align_up(size);
 
@@ -56,8 +50,8 @@ BucketList :: struct {
         while size + b.idx > b.len {
             if b.next == null {
                 new_size := max(b.len * 2, alloc_size);
-                memory := NewArray(size_of(Bucket) + new_size, u8, allocator = buckets.allocator,
-                                   allocator_data = buckets.allocator_data, initialized = false);
+                memory := NewArray(size_of(Bucket) + new_size, u8,
+                                    allocator = buckets.allocator, initialized = false);
                 if memory.data == null      return null;
 
                 b.next = cast(*Bucket) memory.data;
@@ -84,7 +78,7 @@ BucketList :: struct {
     free_all :: (buckets: *BucketList) {
         assert(buckets != null);
         assert(buckets.first != null, "BucketList must be initialized before using it");
-        push_allocator(buckets.allocator, buckets.allocator_data);
+        push_allocator(buckets.allocator);
 
         b := buckets.first;
         while b {

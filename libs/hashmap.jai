@@ -23,8 +23,7 @@ Map :: struct(Key: Type, Value: Type, Hasher: Type = SipHash(),
     slots_filled: s64 = 0;   // The number of slots that can't be used for new items (either currently valid, or items that were removed).
     entries: [] Entry; @--- // For performance reasons, this array is created uninitialized, so don't try to print it.
 
-    allocator:      Allocator = null;
-    allocator_data: *void = null;
+    allocator: Allocator;
 
 
     hasher : Hasher;
@@ -39,7 +38,7 @@ Map :: struct(Key: Type, Value: Type, Hasher: Type = SipHash(),
 }
 
 empty_map :: ($Key: Type, $Value: Type, capacity : s64 = 0, hasher: $Hasher = SipHash().{},
-                allocator : Allocator = null, allocator_data : *void = null,
+                allocator := context.allocator,
                 $given_compare_function: (Key, Key) -> bool = null,
                 $load_factor_percent: u32 = 70)
                 -> Map(Key, Value, Hasher, given_compare_function, load_factor_percent)
@@ -48,13 +47,7 @@ empty_map :: ($Key: Type, $Value: Type, capacity : s64 = 0, hasher: $Hasher = Si
     map.entries.count = 0;
     map.entries.data = null;
 
-    if allocator {
-        map.allocator = allocator;
-        map.allocator_data = allocator_data;
-    } else {
-        map.allocator = context.allocator;
-        map.allocator_data = context.allocator_data;
-    }
+    map.allocator = allocator;
 
     if capacity     map_resize(*map, capacity);
     return map;
@@ -94,13 +87,13 @@ map_resize :: (using map: *Map, slots_to_allocate: s64 = 0) {
     // keys and values? Maybe, but that will complicate the map,
     // so let's not worry about it now unless we need it.
 
-    entries = NewArray(n, Entry, false, map.allocator, map.allocator_data);
+    entries = NewArray(n, Entry, false, map.allocator);
     for * entries  it.hash = 0;
 }
 
 // Frees the memory allocated by the map.
 map_deinit :: (map: *Map) {
-    free(map.entries.data, map.allocator, map.allocator_data);
+    free(map.entries.data, map.allocator);
 }
 
 // This reset keeps the current number of allocated slots;
@@ -257,7 +250,7 @@ expand :: (map: *Map) {
         if entry.hash >= map.FIRST_VALID_HASH  map_add(map, entry.key, entry.value);
     }
 
-    free(old_entries.data, map.allocator, map.allocator_data);
+    free(old_entries.data, map.allocator);
 }
 
 test :: () {}

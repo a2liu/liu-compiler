@@ -462,6 +462,9 @@ check_assignment :: (target: *Expr, expr: *Expr, scope: *Scope) -> Result(s32) {
         // assert(base_type == expr_type);
 
         ret();
+
+    case;
+        throw(target, "??");
     }
 }
 

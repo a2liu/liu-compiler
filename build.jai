@@ -27,7 +27,7 @@ init_build :: (workspace_name: string) -> Workspace, Build_Options, [..] string 
             full_name := copy_string(f_info.full_name);
             _path, _basename, _ext, _name := path_decomp(full_name);
             basename := copy_string(_basename);
-            to_lower(basename);
+            to_lower_in_place(basename);
 
             previous := table_find_pointer(modules, basename);
             if previous {

@@ -14,10 +14,9 @@ StringBuilder :: struct {
     first_buffer : *Buffer;
     current_buffer : *Buffer;
     allocator : Allocator;
-    allocator_data : *void;
 
     try_write :: (builder: *StringBuilder, data: []u8) -> bool {
-        if !builder.allocator init(builder);
+        if !builder.allocator.proc init(builder);
 
         eat :: (data: [] u8, index: s64) -> [] u8, [] u8 {
             assert(0 <= index);
@@ -62,14 +61,13 @@ StringBuilder :: struct {
 
 init :: (builder: *StringBuilder) {
     builder.allocator = context.allocator;
-    builder.allocator_data = context.allocator_data;
 }
 
 free_buffers :: (builder: *StringBuilder) {
     buffer := builder.first_buffer;
     while buffer {
         next := buffer.next;
-        free(buffer, builder.allocator, builder.allocator_data);
+        free(buffer, builder.allocator);
         buffer = next;
     }
 
@@ -84,13 +82,12 @@ clear_contents :: (builder: *StringBuilder) {
     if builder.current_buffer   builder.current_buffer.occupied = 0;
 }
 
-to_string :: (builder: *StringBuilder, allocator := context.allocator,
-allocator_data := context.allocator_data) -> string {
+to_string :: (builder: *StringBuilder, allocator := context.allocator) -> string {
     if builder.inline_occupied == 0 return "";
 
     if builder.inline_occupied <= builder.inline_data.count {
         result : string = ---;
-        result.data  = alloc(builder.inline_occupied, allocator, allocator_data);
+        result.data  = alloc(builder.inline_occupied, allocator);
         result.count = builder.inline_occupied;
         memcpy(result.data, builder.inline_data.data, result.count);
 
@@ -103,7 +100,7 @@ allocator_data := context.allocator_data) -> string {
     string_count := builder.inline_data.count + buffers_size;
 
     result : string = ---;
-    result.data  = alloc(string_count, allocator, allocator_data);
+    result.data  = alloc(string_count, allocator);
     assert(result.data != null);
     result.count = string_count;
 
@@ -130,7 +127,7 @@ Buffer :: StringBuilder.Buffer;
 BUFFER_SIZE :: 16;
 
 expand :: (builder: *StringBuilder) -> *Buffer #expand {
-    if builder.allocator    init(builder);
+    if !builder.allocator.proc    init(builder);
 
     if builder.current_buffer && builder.current_buffer.next {
         buffer := builder.current_buffer.next;
@@ -141,7 +138,7 @@ expand :: (builder: *StringBuilder) -> *Buffer #expand {
         return buffer;
     }
 
-    buffer := cast(*Buffer) alloc(size_of(Buffer), builder.allocator, builder.allocator_data);
+    buffer := cast(*Buffer) alloc(size_of(Buffer), builder.allocator);
     if !buffer  `return false;
 
     buffer.occupied = 0;
