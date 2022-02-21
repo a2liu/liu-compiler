@@ -120,6 +120,8 @@ is_initial_file :: (loc := #caller_location) -> bool {
     out_options.math_bounds_check = .FATAL;
     out_options.import_path = import_path;
     out_options.dead_code_elimination = .NONE;
+    out_options.shorten_filenames_in_error_messages = true;
+    out_options.text_output_flags = .OUTPUT_TIMING_INFO;
 
     if mode == {
     case .EXE;
