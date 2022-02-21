@@ -1,15 +1,9 @@
-#import "Compiler";
 #import "Basic";
-#import "File_Utilities";
-#import "Hash_Table";
 #import "String";
-
-#load "../libs/files/module.jai";
 
 MyType :: struct {}
 
 for_expansion :: (iter: *MyType, body: Code, flags: For_Flags) #expand {
-  frumbolias := true;
   donglebopper := false;
 
   `it := 0;
@@ -35,17 +29,14 @@ my_macro :: (body: Code) #expand {
 }
 
 main :: () {
+  /*
   collection := MyType.{};
 
-  /*
-
   // This prints the warning 3 times
-
   for collection {
     a := copy_string("Hello, world!");
     to_lower(a);
   }
-
   */
 
   // This prints the warning 2 times
