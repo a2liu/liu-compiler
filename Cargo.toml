@@ -1,0 +1,35 @@
+[package]
+name = "liu"
+version = "0.0.1"
+edition = "2021"
+
+[lib]
+name = "liu"
+path = "src/lib.rs"
+
+# the "rlib" isn't technically necessary here. "cdylib" is used by WASM stuff,
+# and "rlib" would be used by rust programs that depend on this library if there
+# were any.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+aliu = "*"
+unicode-width = "0.1.7"
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+opt-level = "z"
+panic = "abort"
+codegen-units = 1
+
+# For some reason, turning this on reduces the binary size from 1.5 MB to 22 KB.
+# I guess Zero-Cost Abstractions are only Zero-Cost if you're a big-brained
+# compiler programmer. Otherwise they cost around 1.478 MB.
+#                               - Albert Liu, Dec 06, 2021 Mon 23:08 EST
+lto = true
+
+[package.metadata.wasm-pack.profile.release]
+# Toggle this to get some extra debug info for size profiling
+# wasm-opt = ['-O4', '-g']

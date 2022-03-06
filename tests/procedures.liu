@@ -1,0 +1,9 @@
+proc hello_world() {
+  print(2)
+}
+
+let a = 3
+
+print(a)
+
+hello_world()

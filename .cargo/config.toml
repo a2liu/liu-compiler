@@ -1,0 +1,14 @@
+[alias]
+wc = "check --target wasm32-unknown-unknown"
+
+[build]
+target-dir = ".cargo/target"
+
+# I am fucking furious. https://github.com/rust-lang/cargo/issues/9335
+#                               - Albert Liu, Dec 09, 2021 Thu 21:01 EST
+[net]
+git-fetch-with-cli = true
+
+# IT DIDN'T EVEN FUCKING FIX IT
+#                               - Albert Liu, Dec 14, 2021 Tue 20:41 EST
+

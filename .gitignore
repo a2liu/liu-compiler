@@ -1,13 +1,5 @@
-*
+# Rust build directory
+/.cargo/target
 
-!.gitignore
-!*.md
-!LICENSE
-!*.jai
-!*.liu
-
-!/src
-!/libs
-!/test
-!/repro
-!/vim-liu
+# Output of random tests during development
+a.out
