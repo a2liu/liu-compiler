@@ -14,7 +14,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 aliu = "*"
+# aliu = { path = "../rust-utils" }
 unicode-width = "0.1.7"
+region = "3.0.0"
 
 [profile.dev]
 opt-level = "s"

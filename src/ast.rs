@@ -1,6 +1,10 @@
 use crate::util::*;
 use crate::*;
 
+pub struct AstAllocator {
+    structure: Pod<ExprKind>,
+}
+
 pub struct Ast {
     pub allocator: BucketList,
     pub block: Block,
