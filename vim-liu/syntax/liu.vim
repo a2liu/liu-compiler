@@ -3,12 +3,14 @@ if exists("b:current_syntax")
 endif
 
 syntax keyword liuStruct struct
+syntax keyword liuType type
 syntax keyword liuEnum enum
+syntax keyword liuLet let
 
 syntax keyword liuIf if
 syntax keyword liuElse else
 syntax keyword liuFor for
-syntax keyword liuProc proc
+syntax keyword liuProc proc nextgroup=liuProcName skipwhite skipempty
 
 syntax keyword liuDataType void string u8 u16 u32 u64 s8 s16 s32 s64 bool
 syntax keyword liuBool true false
@@ -21,7 +23,7 @@ syntax keyword liuIt it
 
 syntax region liuString start=/\v"/ skip=/\v\\./ end=/\v"/
 
-syntax match liuProcName "\v<\w*>(\s*::\s*proc)@="
+syntax match liuProcName "[a-zA-Z_][a-zA-Z0-9_]*" display contained
 
 syntax match liuTagNote "@\<\w\+\>" display
 
@@ -48,6 +50,7 @@ highlight def link liuString String
 
 highlight def link liuStruct Structure
 highlight def link liuEnum Structure
+highlight def link liuLet Keyword
 
 highlight def link liuProcName Function
 
