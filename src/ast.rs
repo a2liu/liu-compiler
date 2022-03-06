@@ -1,9 +1,8 @@
 use crate::util::*;
 use crate::*;
-
-pub struct AstAllocator {
-    structure: Pod<ExprKind>,
-}
+use core::cell::*;
+use core::mem::*;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct Ast {
     pub allocator: BucketList,
@@ -111,4 +110,282 @@ impl ExprKind {
             ForInfinite { block } => "ForInfinite",
         };
     }
+}
+
+struct AstGlobalAllocator {
+    len: AtomicUsize,
+    capacity: usize,
+    tree: region::Allocation,
+    locs: region::Allocation,
+    files: region::Allocation,
+}
+
+// TODO actually figure out what numbers here would be good
+const ALLOC_SIZE: usize = 32 * 1024 * 1024;
+const RANGE_BYTES_SIZE: usize = 1024;
+const RANGE_SIZE: usize = RANGE_BYTES_SIZE / core::mem::size_of::<ExprKind>();
+
+unsafe impl Sync for AstGlobalAllocator {}
+
+lazy_static! {
+    static ref AST_ALLOC: AstGlobalAllocator = {
+        let tree = expect(region::alloc(ALLOC_SIZE, region::Protection::READ_WRITE));
+
+        let capacity = tree.len() / core::mem::size_of::<ExprKind>();
+        let range_count = capacity / RANGE_SIZE;
+        let capacity = range_count * RANGE_SIZE;
+
+        let locs = expect(region::alloc(
+            capacity * core::mem::size_of::<CopyRange>(),
+            region::Protection::READ_WRITE,
+        ));
+
+        let files = expect(region::alloc(
+            range_count * core::mem::size_of::<u32>(),
+            region::Protection::READ_WRITE,
+        ));
+
+        AstGlobalAllocator {
+            len: AtomicUsize::new(0),
+            capacity,
+            tree,
+            locs,
+            files,
+        }
+    };
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExprId(u32);
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExprRange(u32, u32);
+
+impl core::ops::Deref for ExprRange {
+    type Target = [ExprKind];
+
+    fn deref(&self) -> &[ExprKind] {
+        let arena = &*AST_ALLOC;
+
+        unsafe {
+            let exprs = arena.tree.as_ptr() as *const ExprKind;
+            let exprs = core::slice::from_raw_parts(exprs, arena.capacity);
+
+            let start = self.0 as usize;
+            let end = self.1 as usize;
+
+            return &exprs[start..end];
+        }
+    }
+}
+
+impl core::ops::Deref for ExprId {
+    type Target = ExprKind;
+
+    fn deref(&self) -> &ExprKind {
+        let arena = &*AST_ALLOC;
+
+        unsafe {
+            let exprs = arena.tree.as_ptr() as *const ExprKind;
+            let exprs = core::slice::from_raw_parts(exprs, arena.capacity);
+
+            let index = self.0 as usize;
+
+            return &exprs[index];
+        }
+    }
+}
+
+impl IntoIterator for ExprRange {
+    type Item = ExprId;
+    type IntoIter = ExprRangeIter;
+
+    fn into_iter(self) -> ExprRangeIter {
+        return ExprRangeIter {
+            start: self.0,
+            end: self.1,
+        };
+    }
+}
+
+pub struct ExprRangeIter {
+    start: u32,
+    end: u32,
+}
+
+impl Iterator for ExprRangeIter {
+    type Item = ExprId;
+
+    fn next(&mut self) -> Option<ExprId> {
+        if self.start >= self.end {
+            return None;
+        }
+
+        let id = self.start;
+        self.start += 1;
+
+        return Some(ExprId(id));
+    }
+}
+
+impl ExprId {
+    fn loc(self) -> CodeLoc {
+        let arena = &*AST_ALLOC;
+
+        unsafe {
+            let files = arena.files.as_ptr() as *const u32;
+            let locs = arena.locs.as_ptr() as *const CopyRange;
+
+            let files = core::slice::from_raw_parts(files, arena.capacity / RANGE_SIZE);
+            let locs = core::slice::from_raw_parts(locs, arena.capacity);
+
+            let index = self.0 as usize;
+
+            let loc = locs[index];
+
+            return CodeLoc {
+                start: loc.start,
+                end: loc.end,
+                file: files[index / RANGE_SIZE],
+            };
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct SpannedExpr {
+    expr: ExprKind,
+    span: CopyRange,
+}
+
+pub struct AstAlloc {
+    file: u32,
+    current: u32,
+    end: u32,
+
+    tree: *const ExprKind,
+    locs: *const CopyRange,
+    files: *const u32,
+}
+
+impl AstAlloc {
+    pub fn new(file: u32) -> Self {
+        let arena = &*AST_ALLOC;
+
+        let tree = arena.tree.as_ptr() as *const ExprKind;
+        let files = arena.files.as_ptr() as *const u32;
+        let locs = arena.locs.as_ptr() as *const CopyRange;
+
+        return Self {
+            file,
+            current: 0,
+            end: 0,
+
+            tree,
+            locs,
+            files,
+        };
+    }
+
+    pub fn reserve(&mut self, count: usize) {
+        if count <= self.end as usize - self.current as usize {
+            return;
+        }
+
+        // round up count to range boundary
+        let range_count = (count - 1) / RANGE_SIZE + 1;
+        let count = range_count * RANGE_SIZE;
+
+        println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ reserve {}", count);
+
+        let arena = &*AST_ALLOC;
+
+        let current = arena.len.fetch_add(count, Ordering::SeqCst);
+        let end = current + count;
+
+        if end > arena.capacity {
+            panic!("ran out of space");
+        }
+
+        self.current = current as u32;
+        self.end = end as u32;
+
+        unsafe {
+            let files = self.files as *mut u32;
+            let files = files.add(self.current as usize / RANGE_SIZE);
+            let files = core::slice::from_raw_parts_mut(files, range_count);
+
+            files.fill(self.file);
+        }
+    }
+
+    pub fn alloc(&mut self, kind: ExprKind, range: CopyRange) -> ExprId {
+        self.reserve(1);
+
+        let index = self.current;
+        self.current += 1;
+
+        unsafe {
+            let index = index as usize;
+
+            let expr = self.tree as *mut ExprKind;
+            let expr = expr.add(index);
+            *expr = kind;
+
+            let loc = self.locs as *mut CopyRange;
+            let loc = loc.add(index);
+            *loc = range;
+        }
+
+        return ExprId(index);
+    }
+
+    pub fn alloc_array(&mut self, spanned_exprs: Pod<SpannedExpr>) -> ExprRange {
+        let len = spanned_exprs.len();
+        self.reserve(len);
+
+        let index = self.current;
+        self.current += len as u32;
+
+        unsafe {
+            let index = index as usize;
+
+            let exprs = self.tree as *mut ExprKind;
+            let exprs = exprs.add(index);
+
+            let locs = self.locs as *mut CopyRange;
+            let locs = locs.add(index);
+
+            let exprs = core::slice::from_raw_parts_mut(exprs, len);
+            let locs = core::slice::from_raw_parts_mut(locs, len);
+
+            for (i, expr) in spanned_exprs.into_iter().enumerate() {
+                exprs[i] = expr.expr;
+                locs[i] = expr.span;
+            }
+        }
+
+        return ExprRange(index, index + len as u32);
+    }
+}
+
+#[test]
+fn ast() {
+    fn make_tree() {
+        let mut ast_alloc = AstAlloc::new(0);
+
+        for i in 0usize..64 {
+            let id = ast_alloc.alloc(ExprKind::Integer(i as u64), r(i, i + 1));
+
+            println!("{:?} {:?} {:?}", id, *id, id.loc());
+        }
+    }
+
+    let t1 = std::thread::spawn(make_tree);
+    let t2 = std::thread::spawn(make_tree);
+    let t3 = std::thread::spawn(make_tree);
+
+    t1.join().expect("idk");
+    t2.join().expect("idk");
+    t3.join().expect("idk");
 }

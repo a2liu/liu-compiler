@@ -4,15 +4,21 @@ version = 3
 
 [[package]]
 name = "aliu"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd125b7e79c238c6451b7230f3cc80d30ddf89cccaedc7f4179dc71fa031487b"
+checksum = "cc2c048824c2618bff7cab8e8ec3f43cc53f8d435d11c936ddbcb9f435b8bcb9"
 
 [[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+
+[[package]]
+name = "lazy_static"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
@@ -25,6 +31,7 @@ name = "liu"
 version = "0.0.1"
 dependencies = [
  "aliu",
+ "lazy_static",
  "region",
  "unicode-width",
 ]

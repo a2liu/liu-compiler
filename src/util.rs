@@ -9,7 +9,7 @@ pub struct VirtualAlloc {
 }
 
 impl VirtualAlloc {
-    fn new(size: usize) -> Self {
+    pub fn new(size: usize) -> Self {
         let alloc = match region::alloc(size, region::Protection::READ_WRITE) {
             Ok(a) => a,
             Err(e) => {

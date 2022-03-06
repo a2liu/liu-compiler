@@ -11,6 +11,9 @@
 /* */
 
 #[macro_use]
+extern crate lazy_static;
+
+#[macro_use]
 extern crate aliu;
 
 extern crate alloc;
@@ -38,10 +41,10 @@ mod tests {
     use crate::util::*;
     use core::fmt::Write;
 
-    #[test]
-    fn procedures() {
-        run_on_file("procedures.liu");
-    }
+    // #[test]
+    // fn procedures() {
+    //     run_on_file("procedures.liu");
+    // }
 
     #[test]
     fn simple() {
