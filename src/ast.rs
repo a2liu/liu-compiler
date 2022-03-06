@@ -161,6 +161,23 @@ pub struct ExprId(u32);
 #[derive(Debug, Clone, Copy)]
 pub struct ExprRange(u32, u32);
 
+impl core::ops::Deref for ExprId {
+    type Target = ExprKind;
+
+    fn deref(&self) -> &ExprKind {
+        let arena = &*AST_ALLOC;
+
+        unsafe {
+            let exprs = arena.tree.as_ptr() as *const ExprKind;
+            let exprs = core::slice::from_raw_parts(exprs, arena.capacity);
+
+            let index = self.0 as usize;
+
+            return &exprs[index];
+        }
+    }
+}
+
 impl core::ops::Deref for ExprRange {
     type Target = [ExprKind];
 
@@ -175,23 +192,6 @@ impl core::ops::Deref for ExprRange {
             let end = self.1 as usize;
 
             return &exprs[start..end];
-        }
-    }
-}
-
-impl core::ops::Deref for ExprId {
-    type Target = ExprKind;
-
-    fn deref(&self) -> &ExprKind {
-        let arena = &*AST_ALLOC;
-
-        unsafe {
-            let exprs = arena.tree.as_ptr() as *const ExprKind;
-            let exprs = core::slice::from_raw_parts(exprs, arena.capacity);
-
-            let index = self.0 as usize;
-
-            return &exprs[index];
         }
     }
 }
