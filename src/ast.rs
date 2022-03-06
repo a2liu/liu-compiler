@@ -296,8 +296,6 @@ impl AstAlloc {
         let range_count = (count - 1) / RANGE_SIZE + 1;
         let count = range_count * RANGE_SIZE;
 
-        println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ reserve {}", count);
-
         let arena = &*AST_ALLOC;
 
         let current = arena.len.fetch_add(count, Ordering::SeqCst);
