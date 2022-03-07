@@ -108,10 +108,10 @@ impl Token {
 pub fn parse(table: &StringTable, file: u32, data: Pod<Token>) -> Result<Ast, Error> {
     use TokenKind::*;
 
-    let allocator = BucketList::new();
+    let allocator = AstAlloc::new(file);
 
     let mut parser = Parser {
-        allocator: &allocator,
+        allocator,
         table,
         file,
         data,
@@ -148,24 +148,15 @@ pub fn parse(table: &StringTable, file: u32, data: Pod<Token>) -> Result<Ast, Er
         parser.pop_kinds_loop(&[Skip, NewlineSkip, Semicolon]);
     }
 
-    let mut stmts_in_alloc = Pod::with_allocator(&allocator);
-    stmts_in_alloc.reserve(stmts.len());
+    let stmts = parser.allocator.add_slice(&stmts);
 
-    for stmt in stmts {
-        stmts_in_alloc.push(stmt);
-    }
+    let block = Block { stmts };
 
-    let stmts = stmts_in_alloc;
-
-    let block = Block {
-        stmts: stmts.leak(),
-    };
-
-    return Ok(Ast { allocator, block });
+    return Ok(Ast { block });
 }
 
 struct Parser<'a> {
-    allocator: &'a BucketList,
+    allocator: AstAlloc,
     table: &'a StringTable,
     data: Pod<Token>,
     file: u32,
@@ -325,7 +316,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        let code = self.allocator.new(code);
+        let code = self.allocator.make(code);
 
         let kind = ExprKind::Procedure(Proc { symbol, code });
 
@@ -383,7 +374,7 @@ impl<'a> Parser<'a> {
             None => self.parse_binary_op()?,
         };
 
-        let value = self.allocator.new(value);
+        let value = self.allocator.make(value);
 
         loc.end = self.text_cursor;
         let kind = ExprKind::Let {
@@ -412,11 +403,11 @@ impl<'a> Parser<'a> {
             self.pop_kinds_loop(&[Skip, NewlineSkip]);
 
             let cond = self.parse_binary_op()?;
-            let cond = self.allocator.new(cond);
+            let cond = self.allocator.make(cond);
 
             let control_start = self.text_cursor;
             let if_true = match self.parse_control()? {
-                Some(e) => self.allocator.new(e),
+                Some(e) => self.allocator.make(e),
                 None => {
                     loc.start = control_start;
                     loc.end = self.text_cursor;
@@ -424,8 +415,6 @@ impl<'a> Parser<'a> {
                     return Err(Error::expected("control flow or block", loc));
                 }
             };
-
-            let if_true = self.allocator.new(if_true);
 
             if !self.pop_tok(Word, Key::Else as u32) {
                 loc.end = self.text_cursor;
@@ -436,7 +425,7 @@ impl<'a> Parser<'a> {
 
             let control_start = self.text_cursor;
             let if_false = match self.parse_control()? {
-                Some(e) => self.allocator.new(e),
+                Some(e) => self.allocator.make(e),
                 None => {
                     loc.start = control_start;
                     loc.end = self.text_cursor;
@@ -470,7 +459,9 @@ impl<'a> Parser<'a> {
             if self.pop_kind(RBrace).is_some() {
                 loc.end = self.text_cursor;
 
-                let block = Block { stmts: &[] };
+                let block = Block {
+                    stmts: ExprRange::EMPTY,
+                };
 
                 let kind = ExprKind::Block(block);
 
@@ -505,16 +496,9 @@ impl<'a> Parser<'a> {
                 self.pop_kinds_loop(&[Skip, NewlineSkip, Semicolon]);
             }
 
-            let mut stmts_in_alloc = Pod::with_allocator(self.allocator);
-            stmts_in_alloc.reserve(stmts.len());
+            let stmts = self.allocator.add_slice(&stmts);
 
-            for stmt in stmts {
-                stmts_in_alloc.push(stmt);
-            }
-
-            let block = Block {
-                stmts: stmts_in_alloc.leak(),
-            };
+            let block = Block { stmts };
 
             let kind = ExprKind::Block(block);
 
@@ -570,10 +554,11 @@ impl<'a> Parser<'a> {
                 check(&expr, &right)?;
             }
 
-            let left = self.allocator.new(expr);
-            let right = self.allocator.new(right);
-
             loc.end = right.loc.end;
+
+            let left = self.allocator.make(expr);
+            let right = self.allocator.make(right);
+
             let kind = ExprKind::BinaryOp { kind, left, right };
 
             expr = Expr { kind, loc };
@@ -619,8 +604,11 @@ impl<'a> Parser<'a> {
                     if self.pop_kind(RParen).is_some() {
                         loc.end = self.text_cursor;
 
-                        let callee = self.allocator.new(expr);
-                        let kind = ExprKind::Call { callee, args: &[] };
+                        let callee = self.allocator.make(expr);
+                        let kind = ExprKind::Call {
+                            callee,
+                            args: ExprRange::EMPTY,
+                        };
 
                         expr = Expr { kind, loc };
                         continue;
@@ -653,7 +641,7 @@ impl<'a> Parser<'a> {
                         }
                     }
 
-                    let callee = self.allocator.new(expr);
+                    let callee = self.allocator.make(expr);
                     let args = self.allocator.add_slice(&args);
 
                     loc.end = self.text_cursor;

@@ -41,8 +41,8 @@ pub fn check_ast(ast: &Ast) -> Result<TypeEnv, Error> {
 }
 
 pub struct TypeEnv {
-    pub type_of: HashMap<*const Expr, Type>,
-    pub ident_to_expr: HashMap<*const Expr, *const Expr>,
+    pub type_of: HashMap<ExprId, Type>,
+    pub ident_to_expr: HashMap<ExprId, ExprId>,
 }
 
 struct CheckEnv<'a> {
@@ -79,7 +79,7 @@ impl<'a> CheckEnv<'a> {
         use ExprKind::*;
 
         for expr in block.stmts {
-            let p = match expr.kind {
+            let p = match *expr {
                 Procedure(p) => p,
                 _ => continue,
             };
@@ -93,12 +93,13 @@ impl<'a> CheckEnv<'a> {
         return Ok(ty);
     }
 
-    fn check_expr(&mut self, expr: &'static Expr) -> Result<Type, Error> {
+    fn check_expr(&mut self, id: ExprId) -> Result<Type, Error> {
         use ExprKind::*;
 
+        let expr = &*id;
         let mut ty;
 
-        match expr.kind {
+        match *expr {
             Procedure(p) => {
                 let mut proc_child = self.chain_proc();
 
@@ -115,7 +116,7 @@ impl<'a> CheckEnv<'a> {
                 let result = self.check_expr(value)?;
 
                 if let Some(prev) = self.scope.vars.insert(symbol, value) {
-                    return Err(Error::new("redeclared variable", expr.loc));
+                    return Err(Error::new("redeclared variable", id.loc()));
                 }
 
                 ty = Type::Null;
@@ -123,13 +124,13 @@ impl<'a> CheckEnv<'a> {
 
             Ident { symbol } => {
                 let value = match self.scope.search(symbol) {
-                    Some(e) => e as *const Expr,
+                    Some(e) => e,
                     None => {
-                        return Err(Error::new("couldn't find variable", expr.loc));
+                        return Err(Error::new("couldn't find variable", id.loc()));
                     }
                 };
 
-                self.types.ident_to_expr.insert(expr, value);
+                self.types.ident_to_expr.insert(id, value);
 
                 ty = self.types.type_of[&value];
             }
@@ -141,7 +142,7 @@ impl<'a> CheckEnv<'a> {
                 if left_ty != right_ty {
                     return Err(Error::new(
                         "binary operation should be on values of similar type",
-                        expr.loc,
+                        id.loc(),
                     ));
                 }
 
@@ -161,7 +162,7 @@ impl<'a> CheckEnv<'a> {
             Call { callee, args } => {
                 const PRINT: u32 = Key::Print as u32;
 
-                match callee.kind {
+                match *callee {
                     Ident { symbol: PRINT } => {}
 
                     _ => {
@@ -179,7 +180,7 @@ impl<'a> CheckEnv<'a> {
             k => unimplemented!("{}", k.name()),
         }
 
-        if let Some(_) = self.types.type_of.insert(expr, ty) {
+        if let Some(_) = self.types.type_of.insert(id, ty) {
             panic!("idk");
         }
 
@@ -196,7 +197,7 @@ enum ScopeKind<'a> {
 // eventually this will be chaining
 struct ScopeEnv<'a> {
     kind: ScopeKind<'a>,
-    vars: HashMap<u32, &'static Expr>,
+    vars: HashMap<u32, ExprId>,
 }
 
 impl<'a> ScopeEnv<'a> {
@@ -208,7 +209,7 @@ impl<'a> ScopeEnv<'a> {
         };
     }
 
-    fn search(&self, symbol: u32) -> Option<&'static Expr> {
+    fn search(&self, symbol: u32) -> Option<ExprId> {
         let mut current = self;
 
         loop {

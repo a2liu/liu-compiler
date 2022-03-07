@@ -30,17 +30,18 @@ impl<'a> Interp<'a> {
         }
     }
 
-    fn expr(&mut self, scope: &mut Scope, e: &Expr) -> Register {
+    fn expr(&mut self, scope: &mut Scope, id: ExprId) -> Register {
         use ExprKind::*;
 
-        match e.kind {
+        let e = &*id;
+
+        match *e {
             Integer(value) => {
                 return Register::from_u64(value);
             }
 
             Ident { .. } => {
-                let expr = e as *const Expr;
-                let expr = unwrap(self.env.ident_to_expr.get(&expr));
+                let expr = unwrap(self.env.ident_to_expr.get(&id));
                 let register = unwrap(scope.values.get(expr));
 
                 return *register;
@@ -81,6 +82,7 @@ impl<'a> Interp<'a> {
 
             BinaryOp { kind, left, right } => {
                 use BinaryExprKind::*;
+
                 let left = self.expr(scope, left);
                 let right = self.expr(scope, right);
 
@@ -99,7 +101,7 @@ impl<'a> Interp<'a> {
 }
 
 struct Scope<'a> {
-    values: &'a mut HashMap<*const Expr, Register>,
+    values: &'a mut HashMap<ExprId, Register>,
     alloc: ScopedBump<'a>,
 }
 

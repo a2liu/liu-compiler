@@ -5,7 +5,6 @@ use core::mem::*;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct Ast {
-    pub allocator: BucketList,
     pub block: Block,
 }
 
@@ -13,13 +12,13 @@ pub struct Ast {
 pub struct Block {
     // translation from identifier to global memory numbering
     // pub scope: HashRef<'static, u32, u32>,
-    pub stmts: &'static [Expr],
+    pub stmts: ExprRange,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Proc {
     pub symbol: u32,
-    pub code: &'static Expr,
+    pub code: ExprId,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,14 +44,14 @@ pub enum ExprKind {
     Procedure(Proc),
 
     Call {
-        callee: &'static Expr,
-        args: &'static [Expr],
+        callee: ExprId,
+        args: ExprRange,
     },
 
     BinaryOp {
         kind: BinaryExprKind,
-        left: &'static Expr,
-        right: &'static Expr,
+        left: ExprId,
+        right: ExprId,
     },
 
     // TODO Eventually support:
@@ -63,24 +62,24 @@ pub enum ExprKind {
     // let a
     Let {
         symbol: u32,
-        value: &'static Expr,
+        value: ExprId,
     },
 
     Assign {
         symbol: u32,
-        value: &'static Expr,
+        value: ExprId,
     },
 
     Block(Block),
 
     If {
-        cond: &'static Expr,
-        if_true: &'static Expr,
+        cond: ExprId,
+        if_true: ExprId,
     },
     IfElse {
-        cond: &'static Expr,
-        if_true: &'static Expr,
-        if_false: &'static Expr,
+        cond: ExprId,
+        if_true: ExprId,
+        if_false: ExprId,
     },
 
     ForInfinite {
@@ -155,11 +154,15 @@ lazy_static! {
     };
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub struct ExprId(u32);
 
 #[derive(Debug, Clone, Copy)]
 pub struct ExprRange(u32, u32);
+
+impl ExprRange {
+    pub const EMPTY: Self = Self(0, 0);
+}
 
 impl core::ops::Deref for ExprId {
     type Target = ExprKind;
@@ -229,7 +232,7 @@ impl Iterator for ExprRangeIter {
 }
 
 impl ExprId {
-    fn loc(self) -> CodeLoc {
+    pub fn loc(self) -> CodeLoc {
         let arena = &*AST_ALLOC;
 
         unsafe {
@@ -250,12 +253,6 @@ impl ExprId {
             };
         }
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct SpannedExpr {
-    expr: ExprKind,
-    span: CopyRange,
 }
 
 pub struct AstAlloc {
@@ -287,7 +284,7 @@ impl AstAlloc {
         };
     }
 
-    pub fn reserve(&mut self, count: usize) {
+    fn reserve(&mut self, count: usize) {
         if count <= self.end as usize - self.current as usize {
             return;
         }
@@ -317,7 +314,7 @@ impl AstAlloc {
         }
     }
 
-    pub fn alloc(&mut self, kind: ExprKind, range: CopyRange) -> ExprId {
+    pub fn make(&mut self, expr: Expr) -> ExprId {
         self.reserve(1);
 
         let index = self.current;
@@ -326,19 +323,23 @@ impl AstAlloc {
         unsafe {
             let index = index as usize;
 
-            let expr = self.tree as *mut ExprKind;
-            let expr = expr.add(index);
-            *expr = kind;
+            let e = self.tree as *mut ExprKind;
+            let e = e.add(index);
+            *e = expr.kind;
 
             let loc = self.locs as *mut CopyRange;
             let loc = loc.add(index);
+            let range = CopyRange {
+                start: expr.loc.start,
+                end: expr.loc.end,
+            };
             *loc = range;
         }
 
         return ExprId(index);
     }
 
-    pub fn alloc_array(&mut self, spanned_exprs: Pod<SpannedExpr>) -> ExprRange {
+    pub fn add_slice(&mut self, spanned_exprs: &[Expr]) -> ExprRange {
         let len = spanned_exprs.len();
         self.reserve(len);
 
@@ -358,8 +359,9 @@ impl AstAlloc {
             let locs = core::slice::from_raw_parts_mut(locs, len);
 
             for (i, expr) in spanned_exprs.into_iter().enumerate() {
-                exprs[i] = expr.expr;
-                locs[i] = expr.span;
+                exprs[i] = expr.kind;
+                locs[i].start = expr.loc.start;
+                locs[i].end = expr.loc.end;
             }
         }
 
@@ -373,7 +375,14 @@ fn ast() {
         let mut ast_alloc = AstAlloc::new(0);
 
         for i in 0usize..64 {
-            let id = ast_alloc.alloc(ExprKind::Integer(i as u64), r(i, i + 1));
+            let id = ast_alloc.make(Expr {
+                kind: ExprKind::Integer(i as u64),
+                loc: CodeLoc {
+                    start: i,
+                    end: i + 1,
+                    file: 0,
+                },
+            });
 
             println!("{:?} {:?} {:?}", id, *id, id.loc());
         }
