@@ -83,7 +83,7 @@ pub enum ExprKind {
     },
 
     ForInfinite {
-        block: Block,
+        body: ExprId,
     },
 }
 
@@ -93,20 +93,16 @@ impl ExprKind {
 
         return match self {
             Integer(v) => "Integer",
-            Ident { symbol } => "Ident",
+            Ident { .. } => "Ident",
             Procedure(p) => "Procedure",
-            Call { callee, args } => "Call",
-            BinaryOp { kind, left, right } => "BinaryOp",
-            Let { symbol, value } => "Let",
-            Assign { symbol, value } => "Assign",
-            Block(block) => "Block",
-            If { cond, if_true } => "If",
-            IfElse {
-                cond,
-                if_true,
-                if_false,
-            } => "IfElse",
-            ForInfinite { block } => "ForInfinite",
+            Call { .. } => "Call",
+            BinaryOp { .. } => "BinaryOp",
+            Let { .. } => "Let",
+            Assign { .. } => "Assign",
+            Block(b) => "Block",
+            If { .. } => "If",
+            IfElse { .. } => "IfElse",
+            ForInfinite { .. } => "ForInfinite",
         };
     }
 }
