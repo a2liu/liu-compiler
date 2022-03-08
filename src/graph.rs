@@ -31,6 +31,9 @@ pub enum OpKind {
     Load16 { location_id: u32 },
     Load32 { location_id: u32 },
     Load64 { location_id: u32 },
+
+    Forward { target: u32, id: u32 },
+    BlockInput {},
 }
 
 pub struct BasicBlock {}
