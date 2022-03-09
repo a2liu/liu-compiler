@@ -5,7 +5,7 @@ use core::fmt::{self, Error as FmtError, Result as FmtResult, Write};
 // TODO Placeholder system. Eventually we'll flesh this out maybe. For now, 'tis
 // a simple thing with a bit of needless complexity
 //                              - Albert Liu, Jan 23, 2022 Sun 22:21 EST
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     Simple { message: String, loc: CodeLoc },
     StaticSimple { message: &'static str, loc: CodeLoc },
