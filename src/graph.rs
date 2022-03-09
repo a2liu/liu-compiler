@@ -19,8 +19,11 @@ pub enum ControlKind {
     },
 }
 
+// during codegen we can use lifetime information to turn references to a stack
+// local into op result references
 #[derive(Clone, Copy)]
 pub enum Value {
+    ReferenceToStackLocal { id: u32, offset: u16 },
     StackLocal { id: u32 },
     OpResult { id: u32 },
 }
@@ -28,18 +31,17 @@ pub enum Value {
 #[derive(Clone, Copy)]
 pub enum OpKind {
     // Stores: no output value
-    StackStore { offset: u16, size: u8, value: Value },
     Store8 { pointer: Value, value: Value },
     Store16 { pointer: Value, value: Value },
     Store32 { pointer: Value, value: Value },
     Store64 { pointer: Value, value: Value },
 
-    StackLoad { offset: u16, size: u8 },
     Load8 { location: Value },
     Load16 { location: Value },
     Load32 { location: Value },
     Load64 { location: Value },
 
+    // SSA block parameter/phi node stuff
     Forward { block_input_id: u32, id: Value },
     BlockInput {},
 
@@ -47,10 +49,13 @@ pub enum OpKind {
 }
 
 #[derive(Clone, Copy)]
-pub struct BBTag {
+pub struct BBInfo {
     pub end_op: ControlKind,
+    pub ops: CopyRange,
 }
 
-pub struct Graph<'a> {
-    pub blocks: Vec<HeapArray<BBTag, OpKind, &'a BucketList>>,
+pub struct Graph {
+    pub source: Pod<ExprId>,
+    pub ops: Pod<OpKind>,
+    pub blocks: Pod<BBInfo>,
 }
