@@ -3,105 +3,133 @@ use alloc::alloc::Layout;
 use core::cell::Cell;
 use core::ptr::NonNull;
 
-pub struct VirtualAlloc {
-    taken: Cell<bool>,
-    alloc: region::Allocation,
+#[repr(C)]
+pub struct HeapArrayData<Tag, Item>
+where
+    Item: Copy,
+{
+    tag: Tag,
+    items: [Item],
 }
 
-impl VirtualAlloc {
-    pub fn new(size: usize) -> Self {
-        let alloc = match region::alloc(size, region::Protection::READ_WRITE) {
-            Ok(a) => a,
-            Err(e) => {
-                panic!("{:?}", e);
-            }
+pub struct HeapArray<Tag, Item, A>
+where
+    Item: Copy,
+    A: Allocator,
+{
+    data: NonNull<HeapArrayData<Tag, Item>>,
+    alloc: A,
+}
+
+impl<Tag, Item> HeapArray<Tag, Item, Global>
+where
+    Item: Copy,
+{
+    #[inline]
+    pub fn new(tag: Tag, items: &[Item]) -> Self {
+        return Self::with_allocator(tag, items, Global);
+    }
+}
+
+impl<Tag, Item, A> HeapArray<Tag, Item, A>
+where
+    Item: Copy,
+    A: Allocator,
+{
+    fn layout(len: usize) -> Layout {
+        #[repr(C)]
+        pub struct Data<Tag, Item>
+        where
+            Item: Copy,
+        {
+            t: Tag,
+            i: Item,
+        }
+
+        let align = core::mem::align_of::<Data<Tag, Item>>();
+        let size = core::mem::size_of::<Data<Tag, Item>>();
+        let item_size = core::mem::size_of::<Item>();
+        let size = size - item_size + item_size * len;
+
+        return unsafe { Layout::from_size_align_unchecked(size, align) };
+    }
+
+    pub fn with_allocator(tag: Tag, items: &[Item], a: A) -> Self {
+        unsafe {
+            let ptr = match a.allocate(Self::layout(items.len())) {
+                Ok(mut p) => p.as_mut(),
+                Err(e) => panic!("rip"),
+            };
+
+            let ptr = ptr.as_mut_ptr() as *mut Item;
+            let data = core::slice::from_raw_parts_mut(ptr, items.len());
+            let data = data as *mut [Item] as *mut HeapArrayData<Tag, Item>;
+
+            let data = &mut *data;
+
+            core::ptr::write(&mut data.tag, tag);
+            data.items.copy_from_slice(items);
+
+            let data = NonNull::new_unchecked(data);
+
+            return Self { data, alloc: a };
         };
-
-        return Self {
-            taken: Cell::new(false),
-            alloc,
-        };
-    }
-
-    fn get_ptr(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        let size = self.alloc.len();
-        if layout.size() > size || layout.align() > region::page::size() {
-            return Err(AllocError);
-        }
-
-        let ptr = self.alloc.as_ptr::<u8>() as *mut u8;
-        let slice = unsafe { core::slice::from_raw_parts_mut(ptr, size) };
-        let ptr = NonNull::new(slice).ok_or(AllocError)?;
-
-        return Ok(ptr);
     }
 }
 
-unsafe impl Allocator for VirtualAlloc {
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        if self.taken.get() {
-            return Err(AllocError);
+impl<Tag, Item, A> Drop for HeapArray<Tag, Item, A>
+where
+    Item: Copy,
+    A: Allocator,
+{
+    fn drop(&mut self) {
+        unsafe {
+            let data = self.data.as_mut();
+            let layout = Self::layout(data.items.len());
+
+            core::ptr::drop_in_place(data);
+
+            let data = self.data.cast::<u8>();
+            self.alloc.deallocate(data, layout);
         }
-
-        let ptr = self.get_ptr(layout)?;
-        self.taken.set(true);
-
-        return Ok(ptr);
-    }
-
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        if self.taken.get() {
-            self.taken.set(false);
-            return;
-        }
-
-        println!("tried to deallocate twice??");
-    }
-
-    unsafe fn grow(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        panic!("what are you growing?");
-    }
-
-    unsafe fn grow_zeroed(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        panic!("what are you growing?");
-    }
-
-    unsafe fn shrink(
-        &self,
-        ptr: NonNull<u8>,
-        old_layout: Layout,
-        new_layout: Layout,
-    ) -> Result<NonNull<[u8]>, AllocError> {
-        panic!("what are you shrinking?");
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use aliu::*;
+impl<Tag, Item, A> core::ops::Deref for HeapArray<Tag, Item, A>
+where
+    Item: Copy,
+    A: Allocator,
+{
+    type Target = HeapArrayData<Tag, Item>;
 
-    #[test]
-    fn virtual_pod() {
-        let mut pod = Pod::with_allocator(VirtualAlloc::new(4096));
-
-        for _ in 0..512 {
-            pod.push(1u64);
-
-            println!("len={} capa={}", pod.len(), pod.capacity());
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            return self.data.as_ref();
         }
-
-        // pod.push(1u64);
-        // println!("len={} capa={}", pod.len(), pod.capacity());
     }
+}
+
+impl<Tag, Item, A> core::ops::DerefMut for HeapArray<Tag, Item, A>
+where
+    Item: Copy,
+    A: Allocator,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe {
+            return self.data.as_mut();
+        }
+    }
+}
+
+#[test]
+fn heap_array() {
+    let mut a = Pod::new();
+
+    for i in 0..100 {
+        a.push(100 - i);
+    }
+
+    let array = HeapArray::new(Box::new(12), &a);
+
+    assert_eq!(&*a, &array.items);
 }

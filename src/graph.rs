@@ -32,10 +32,14 @@ pub enum OpKind {
     Load32 { location_id: u32 },
     Load64 { location_id: u32 },
 
-    Forward { target: u32, id: u32 },
+    Forward { block_input_id: u32, id: u32 },
     BlockInput {},
+
+    Add { op1: u32, op2: u32 },
 }
 
-pub struct BasicBlock {}
+pub struct BasicBlock {
+    ops: [OpKind],
+}
 
 pub struct Graph {}
