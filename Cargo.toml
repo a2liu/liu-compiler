@@ -17,7 +17,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-aliu = "*"
+aliu = "0.1.*"
 # aliu = { path = "../rust-utils" }
 lazy_static = "1.4.0"
 unicode-width = "0.1.7"
