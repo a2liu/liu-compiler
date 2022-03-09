@@ -66,14 +66,15 @@ mod tests {
         let out = match run_on_file_err(text) {
             Ok(out) => out,
             Err(e) => {
-                let mut out = termcolor::Buffer::ansi();
+                let mut out = termcolor::Buffer::no_color();
 
+                let color = termcolor::ColorChoice::Always;
+                let mut stdout = termcolor::StandardStream::stdout(color);
                 expect(e.render(&files, &mut out));
 
-                let stderr = std::io::stderr();
-                let mut stderr = stderr.lock();
-                let res = stderr.write(out.as_slice());
-                res.expect("failed to write to stderr");
+                let out = unsafe { core::str::from_utf8_unchecked(out.as_slice()) };
+
+                println!("{}", out);
 
                 panic!("{:?}", e);
             }

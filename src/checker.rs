@@ -166,7 +166,10 @@ impl<'a> CheckEnv<'a> {
                     Ident { symbol: PRINT } => {}
 
                     _ => {
-                        unimplemented!("function calls besides print aren't implemented");
+                        return Err(Error::new(
+                            "function calls besides print aren't implemented",
+                            callee.loc(),
+                        ));
                     }
                 }
 
