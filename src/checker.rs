@@ -220,6 +220,8 @@ impl<'a> CheckEnv<'a> {
                     self.graph.add(OpKind::BuiltinPrint { op: value.op }, arg);
                 }
 
+                self.graph.add(OpKind::BuiltinNewline, id);
+
                 return Ok(NULL);
             }
 

@@ -49,6 +49,7 @@ pub enum OpKind {
     Add64 { op1: Operand, op2: Operand },
 
     BuiltinPrint { op: Operand },
+    BuiltinNewline,
 }
 
 #[derive(Clone, Copy)]
