@@ -68,8 +68,6 @@ mod tests {
             Err(e) => {
                 let mut out = termcolor::Buffer::no_color();
 
-                let color = termcolor::ColorChoice::Always;
-                let mut stdout = termcolor::StandardStream::stdout(color);
                 expect(e.render(&files, &mut out));
 
                 let out = unsafe { core::str::from_utf8_unchecked(out.as_slice()) };
