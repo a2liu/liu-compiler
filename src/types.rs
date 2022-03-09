@@ -70,7 +70,7 @@ pub struct File<'a> {
 
 impl<'a> File<'a> {
     pub fn new(buckets: impl Allocator, name: &str, source: &str) -> Self {
-        let line_starts: Vec<usize> = line_starts(source).collect();
+        let line_starts: Pod<usize> = line_starts(source).collect();
 
         return File {
             name: buckets.add_str(name),
@@ -107,7 +107,7 @@ impl<'a> File<'a> {
 pub struct FileDb {
     pub buckets: BucketList,
     pub names: HashMap<(bool, &'static str), u32>,
-    pub files: Vec<File<'static>>,
+    pub files: Pod<File<'static>>,
 }
 
 impl FileDb {
@@ -115,7 +115,7 @@ impl FileDb {
     pub fn new() -> Self {
         let mut new_self = Self {
             buckets: BucketList::new(),
-            files: Vec::new(),
+            files: Pod::new(),
             names: HashMap::new(),
         };
 
@@ -279,15 +279,15 @@ pub fn parent_if_file<'a>(path: &'a str) -> &'a str {
 // https://github.com/danreeves/path-clean/blob/master/src/lib.rs
 pub fn path_clean(path: &str) -> String {
     let out = clean_internal(path.as_bytes());
-    unsafe { String::from_utf8_unchecked(out) }
+    unsafe { str::from_utf8_unchecked(&out).to_string() }
 }
 
 // https://github.com/danreeves/path-clean/blob/master/src/lib.rs
-fn clean_internal(path: &[u8]) -> Vec<u8> {
+fn clean_internal(path: &[u8]) -> Pod<u8> {
     static DOT: u8 = b'.';
 
     if path.is_empty() {
-        return vec![DOT];
+        return pod![DOT];
     }
 
     let rooted = path[0] == PATH_SEP;
@@ -301,7 +301,7 @@ fn clean_internal(path: &[u8]) -> Vec<u8> {
     // The go code this function is based on handles already-clean paths without
     // an allocation, but I haven't done that here because I think it
     // complicates the return signature too much.
-    let mut out: Vec<u8> = Vec::with_capacity(n);
+    let mut out: Pod<u8> = Pod::with_capacity(n);
     let mut r = 0;
     let mut dotdot = 0;
 
