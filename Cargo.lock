@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "aliu"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f39207fcad8229ab0b692d33efbd9fcbc9b96c7973352f4c6ad2f588b239847"
+checksum = "e708e098951fbb4e7026ffafe4a3c5d1e1fbcec97b2103494db976d8e8f6ebc2"
 
 [[package]]
 name = "bitflags"

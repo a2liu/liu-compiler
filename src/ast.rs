@@ -131,7 +131,7 @@ lazy_static! {
         let capacity = range_count * RANGE_SIZE;
 
         let locs = expect(region::alloc(
-            capacity * core::mem::size_of::<CopyRange>(),
+            capacity * core::mem::size_of::<CopyRange<u32>>(),
             region::Protection::READ_WRITE,
         ));
 
@@ -233,7 +233,7 @@ impl ExprId {
 
         unsafe {
             let files = arena.files.as_ptr() as *const u32;
-            let locs = arena.locs.as_ptr() as *const CopyRange;
+            let locs = arena.locs.as_ptr() as *const CopyRange<u32>;
 
             let files = core::slice::from_raw_parts(files, arena.capacity / RANGE_SIZE);
             let locs = core::slice::from_raw_parts(locs, arena.capacity);
@@ -257,7 +257,7 @@ pub struct AstAlloc {
     end: u32,
 
     tree: *const ExprKind,
-    locs: *const CopyRange,
+    locs: *const CopyRange<u32>,
     files: *const u32,
 }
 
@@ -267,7 +267,7 @@ impl AstAlloc {
 
         let tree = arena.tree.as_ptr() as *const ExprKind;
         let files = arena.files.as_ptr() as *const u32;
-        let locs = arena.locs.as_ptr() as *const CopyRange;
+        let locs = arena.locs.as_ptr() as *const CopyRange<u32>;
 
         return Self {
             file,
@@ -323,7 +323,7 @@ impl AstAlloc {
             let e = e.add(index);
             *e = expr.kind;
 
-            let loc = self.locs as *mut CopyRange;
+            let loc = self.locs as *mut CopyRange<u32>;
             let loc = loc.add(index);
             let range = CopyRange {
                 start: expr.loc.start,
@@ -348,7 +348,7 @@ impl AstAlloc {
             let exprs = self.tree as *mut ExprKind;
             let exprs = exprs.add(index);
 
-            let locs = self.locs as *mut CopyRange;
+            let locs = self.locs as *mut CopyRange<u32>;
             let locs = locs.add(index);
 
             let exprs = core::slice::from_raw_parts_mut(exprs, len);
@@ -370,7 +370,7 @@ fn ast() {
     fn make_tree() {
         let mut ast_alloc = AstAlloc::new(0);
 
-        for i in 0usize..64 {
+        for i in 0u32..64 {
             let id = ast_alloc.make(Expr {
                 kind: ExprKind::Integer(i as u64),
                 loc: CodeLoc {

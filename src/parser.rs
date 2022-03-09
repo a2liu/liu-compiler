@@ -83,16 +83,16 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn len(&self, table: &StringTable) -> usize {
+    pub fn len(&self, table: &StringTable) -> u32 {
         match self.kind {
-            TokenKind::Skip => return self.data as usize,
-            TokenKind::NewlineSkip => return self.data as usize,
+            TokenKind::Skip => return self.data,
+            TokenKind::NewlineSkip => return self.data,
 
-            TokenKind::Word => return table.names[self.data].len(),
-            TokenKind::Directive => return table.names[self.data].len() + 1,
-            TokenKind::String => return table.names[self.data].len() + 2,
-            TokenKind::Char => return table.names[self.data].len() + 2,
-            TokenKind::Number => return table.names[self.data].len(),
+            TokenKind::Word => return table.names[self.data].len() as u32,
+            TokenKind::Directive => return table.names[self.data].len() as u32 + 1,
+            TokenKind::String => return table.names[self.data].len() as u32 + 2,
+            TokenKind::Char => return table.names[self.data].len() as u32 + 2,
+            TokenKind::Number => return table.names[self.data].len() as u32,
 
             TokenKind::Equal2 => return 2,
             TokenKind::LtEq => return 2,
@@ -129,7 +129,7 @@ pub fn parse(table: &StringTable, file: u32, data: Pod<Token>) -> Result<Ast, Er
 
     parser.pop_kinds_loop(&[Skip, NewlineSkip, Semicolon]);
 
-    while parser.index < parser.data.len() {
+    while (parser.index as usize) < parser.data.len() {
         let stmt = parser.parse_expr()?;
         stmts.push(stmt);
 
@@ -160,13 +160,13 @@ struct Parser<'a> {
     table: &'a StringTable,
     data: Pod<Token>,
     file: u32,
-    index: usize,
-    text_cursor: usize,
+    index: u32,
+    text_cursor: u32,
 }
 
 impl<'a> Parser<'a> {
     fn peek(&self) -> Option<Token> {
-        let tok = self.data.get(self.index)?;
+        let tok = self.data.get(self.index as usize)?;
 
         return Some(*tok);
     }
@@ -217,7 +217,7 @@ impl<'a> Parser<'a> {
         return true;
     }
 
-    fn pop_kinds_loop(&mut self, kinds: &[TokenKind]) -> CopyRange {
+    fn pop_kinds_loop(&mut self, kinds: &[TokenKind]) -> CopyRange<u32> {
         let start = self.text_cursor;
 
         'outer: while let Some(tok) = self.peek() {
@@ -958,8 +958,8 @@ pub fn lex(table: &mut StringTable, file: u32, s: &str) -> Result<Pod<Token>, Er
 
         let loc = CodeLoc {
             file,
-            start,
-            end: index,
+            start: start as u32,
+            end: index as u32,
         };
 
         let error = Error::new("unrecognized token", loc);
@@ -990,8 +990,8 @@ fn parse_string(file: u32, bytes: &[u8], mut index: usize, terminator: u8) -> Re
 
     let loc = CodeLoc {
         file,
-        start,
-        end: index,
+        start: start as u32,
+        end: index as u32,
     };
 
     return Err(Error::new("failed to parse char or string", loc));

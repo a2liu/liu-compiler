@@ -66,10 +66,12 @@ pub fn render_diagnostic(sel: &Diagnostic, files: &FileDb, out: &mut impl Write)
     for label in sel.labels {
         let loc = label.loc;
         let file_id = loc.file;
-        let start_line_index = line_index(files, file_id, loc.start)?;
+        let loc_start = loc.start as usize;
+        let loc_end = loc.end as usize;
+        let start_line_index = line_index(files, file_id, loc_start)?;
         let start_line_number = line_number(files, file_id, start_line_index)?;
         let start_line_range = line_range(files, file_id, start_line_index)?;
-        let end_line_index = line_index(files, file_id, loc.end)?;
+        let end_line_index = line_index(files, file_id, loc_end)?;
         let end_line_number = line_number(files, file_id, end_line_index)?;
         let end_line_range = line_range(files, file_id, end_line_index)?;
 
@@ -85,10 +87,10 @@ pub fn render_diagnostic(sel: &Diagnostic, files: &FileDb, out: &mut impl Write)
         {
             Some(labeled_file) => {
                 // another diagnostic also referenced this file
-                if labeled_file.start > label.loc.start {
+                if labeled_file.start > loc_start {
                     // this label has a higher style or has the same style but starts earlier
-                    labeled_file.start = label.loc.start;
-                    labeled_file.location = location(files, file_id, label.loc.start)?;
+                    labeled_file.start = loc_start;
+                    labeled_file.location = location(files, file_id, loc_start)?;
                 }
                 labeled_file
             }
@@ -96,9 +98,9 @@ pub fn render_diagnostic(sel: &Diagnostic, files: &FileDb, out: &mut impl Write)
                 // no other diagnostic referenced this file yet
                 labeled_files.push(LabeledFile {
                     file_id: file_id,
-                    start: label.loc.start,
+                    start: loc_start,
                     name: name(files, file_id)?.to_string(),
-                    location: location(files, file_id, label.loc.start)?,
+                    location: location(files, file_id, loc_start)?,
                     num_multi_labels: 0,
                     lines: BTreeMap::new(),
                 });
@@ -114,10 +116,10 @@ pub fn render_diagnostic(sel: &Diagnostic, files: &FileDb, out: &mut impl Write)
             // 2 │ (+ test "")
             //   │         ^^ expected `Int` but found `String`
             // ```
-            let label_start = label.loc.start - start_line_range.start;
+            let label_start = loc_start - start_line_range.start;
             // Ensure that we print at least one caret, even when we
             // have a zero-length source range.
-            let label_end = usize::max(label.loc.end - start_line_range.start, label_start + 1);
+            let label_end = usize::max(loc_end - start_line_range.start, label_start + 1);
 
             let line = labeled_file.get_or_insert_line(
                 start_line_index,
@@ -160,7 +162,7 @@ pub fn render_diagnostic(sel: &Diagnostic, files: &FileDb, out: &mut impl Write)
             labeled_file.num_multi_labels += 1;
 
             // First labeled line
-            let label_start = label.loc.start - start_line_range.start;
+            let label_start = loc_start - start_line_range.start;
 
             let start_line = labeled_file.get_or_insert_line(
                 start_line_index,
@@ -205,7 +207,7 @@ pub fn render_diagnostic(sel: &Diagnostic, files: &FileDb, out: &mut impl Write)
             // 8 │ │     _ _ => num
             //   │ ╰──────────────^ `case` clauses have incompatible types
             // ```
-            let label_end = label.loc.end - end_line_range.start;
+            let label_end = loc_end - end_line_range.start;
 
             let end_line =
                 labeled_file.get_or_insert_line(end_line_index, end_line_range, end_line_number);

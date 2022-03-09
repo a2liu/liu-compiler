@@ -7,8 +7,8 @@ use std::collections::hash_map::HashMap;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct CodeLoc {
-    pub start: usize,
-    pub end: usize,
+    pub start: u32,
+    pub end: u32,
     pub file: u32,
 }
 
