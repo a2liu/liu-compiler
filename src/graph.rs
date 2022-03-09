@@ -7,6 +7,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 // bruh, idk what the deal is. idk what kind of system to use here. we'll figure
 // it out later ig.
 
+#[derive(Clone, Copy)]
 pub enum ControlKind {
     BranchNeqZero {
         conditional: u32,
@@ -18,28 +19,38 @@ pub enum ControlKind {
     },
 }
 
+#[derive(Clone, Copy)]
+pub enum Value {
+    StackLocal { id: u32 },
+    OpResult { id: u32 },
+}
+
+#[derive(Clone, Copy)]
 pub enum OpKind {
     // Stores: no output value
-    StackStore { offset: u16, size: u8, id: u32 },
-    Store8 { location_id: u32, value_id: u32 },
-    Store16 { location_id: u32, value_id: u32 },
-    Store32 { location_id: u32, value_id: u32 },
-    Store64 { location_id: u32, value_id: u32 },
+    StackStore { offset: u16, size: u8, value: Value },
+    Store8 { pointer: Value, value: Value },
+    Store16 { pointer: Value, value: Value },
+    Store32 { pointer: Value, value: Value },
+    Store64 { pointer: Value, value: Value },
 
     StackLoad { offset: u16, size: u8 },
-    Load8 { location_id: u32 },
-    Load16 { location_id: u32 },
-    Load32 { location_id: u32 },
-    Load64 { location_id: u32 },
+    Load8 { location: Value },
+    Load16 { location: Value },
+    Load32 { location: Value },
+    Load64 { location: Value },
 
-    Forward { block_input_id: u32, id: u32 },
+    Forward { block_input_id: u32, id: Value },
     BlockInput {},
 
-    Add { op1: u32, op2: u32 },
+    Add { op1: Value, op2: Value },
 }
 
-pub struct BasicBlock {
-    ops: [OpKind],
+#[derive(Clone, Copy)]
+pub struct BBTag {
+    pub end_op: ControlKind,
 }
 
-pub struct Graph {}
+pub struct Graph<'a> {
+    pub blocks: Vec<HeapArray<BBTag, OpKind, &'a BucketList>>,
+}

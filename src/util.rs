@@ -8,8 +8,8 @@ pub struct HeapArrayData<Tag, Item>
 where
     Item: Copy,
 {
-    tag: Tag,
-    items: [Item],
+    pub tag: Tag,
+    pub items: [Item],
 }
 
 pub struct HeapArray<Tag, Item, A>
