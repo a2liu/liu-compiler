@@ -21,36 +21,39 @@ pub enum ControlKind {
 
 // during codegen we can use lifetime information to turn references to a stack
 // local into op result references
-#[derive(Clone, Copy)]
-pub enum Value {
+#[derive(Debug, Clone, Copy)]
+pub enum Operand {
     ReferenceToStackLocal { id: u32, offset: u16 },
     StackLocal { id: u32 },
     OpResult { id: u32 },
+    ConstantU64 { value: u64 },
 }
 
 #[derive(Clone, Copy)]
 pub enum OpKind {
     // Stores: no output value
-    Store8 { pointer: Value, value: Value },
-    Store16 { pointer: Value, value: Value },
-    Store32 { pointer: Value, value: Value },
-    Store64 { pointer: Value, value: Value },
+    Store8 { pointer: Operand, value: Operand },
+    Store16 { pointer: Operand, value: Operand },
+    Store32 { pointer: Operand, value: Operand },
+    Store64 { pointer: Operand, value: Operand },
 
-    Load8 { location: Value },
-    Load16 { location: Value },
-    Load32 { location: Value },
-    Load64 { location: Value },
+    Load8 { pointer: Operand },
+    Load16 { pointer: Operand },
+    Load32 { pointer: Operand },
+    Load64 { pointer: Operand },
 
     // SSA block parameter/phi node stuff
-    Forward { block_input_id: u32, id: Value },
+    Forward { block_input_id: u32, id: Operand },
     BlockInput {},
 
-    Add { op1: Value, op2: Value },
+    Add64 { op1: Operand, op2: Operand },
+
+    BuiltinPrint { op: Operand },
 }
 
 #[derive(Clone, Copy)]
 pub struct BBInfo {
-    pub end_op: ControlKind,
+    pub control: ControlKind,
     pub ops: CopyRange,
 }
 
@@ -58,4 +61,38 @@ pub struct Graph {
     pub source: Pod<ExprId>,
     pub ops: Pod<OpKind>,
     pub blocks: Pod<BBInfo>,
+    current_begin: usize,
+}
+
+impl Graph {
+    pub fn new() -> Self {
+        return Graph {
+            source: Pod::new(),
+            ops: Pod::new(),
+            blocks: Pod::new(),
+            current_begin: 0,
+        };
+    }
+
+    pub fn complete_block(&mut self, control: ControlKind) -> u32 {
+        let begin = self.current_begin;
+        let end = self.ops.len();
+
+        let id = self.blocks.len() as u32;
+
+        let ops = r(begin, end);
+
+        self.blocks.push(BBInfo { control, ops });
+
+        return id;
+    }
+
+    pub fn add(&mut self, op: OpKind, loc: ExprId) -> Operand {
+        let id = self.ops.len() as u32;
+
+        self.source.push(loc);
+        self.ops.push(op);
+
+        return Operand::OpResult { id };
+    }
 }
