@@ -24,7 +24,6 @@ mod errors;
 mod graph;
 mod interp;
 mod parser;
-mod print_format;
 mod types;
 mod util;
 
@@ -34,14 +33,14 @@ pub use errors::*;
 pub use graph::*;
 pub use interp::*;
 pub use parser::*;
-pub use print_format::*;
 pub use types::*;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::util::*;
-    use core::fmt::Write;
+    use codespan_reporting::term::termcolor;
+    use std::io::Write;
 
     // #[test]
     // fn procedures() {
@@ -67,11 +66,15 @@ mod tests {
         let out = match run_on_file_err(text) {
             Ok(out) => out,
             Err(e) => {
-                let mut out = String::new();
+                let mut out = termcolor::Buffer::ansi();
 
                 expect(e.render(&files, &mut out));
 
-                eprintln!("{}\n", out);
+                let stderr = std::io::stderr();
+                let mut stderr = stderr.lock();
+                let res = stderr.write(out.as_slice());
+                res.expect("failed to write to stderr");
+
                 panic!("{:?}", e);
             }
         };

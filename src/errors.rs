@@ -1,5 +1,7 @@
 use crate::util::*;
 use crate::*;
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::term;
 use core::fmt::{self, Error as FmtError, Result as FmtResult, Write};
 
 // TODO Placeholder system. Eventually we'll flesh this out maybe. For now, 'tis
@@ -18,38 +20,34 @@ pub struct ErrorMessage {
 }
 
 impl Error {
-    pub fn render(&self, files: &FileDb, out: &mut impl Write) -> fmt::Result {
-        let mut labels = Pod::new();
+    pub fn render(
+        &self,
+        files: &FileDb,
+        out: &mut impl term::termcolor::WriteColor,
+    ) -> fmt::Result {
+        let mut out_labels = Vec::new();
+        let mut out_message: String;
 
-        let diagnostic = match self {
+        match self {
             Error::Simple { message, loc } => {
-                labels.push(Label {
-                    message: "",
-                    loc: *loc,
-                });
+                out_labels.push(loc.primary().with_message(""));
 
-                Diagnostic {
-                    message: message,
-                    notes: &[],
-                    labels: &*labels,
-                }
+                out_message = message.to_string();
             }
 
             Error::StaticSimple { message, loc } => {
-                labels.push(Label {
-                    message: "",
-                    loc: *loc,
-                });
+                out_labels.push(loc.primary().with_message(""));
 
-                Diagnostic {
-                    message: *message,
-                    notes: &[],
-                    labels: &*labels,
-                }
+                out_message = message.to_string();
             }
         };
 
-        return render_diagnostic(&diagnostic, files, out);
+        let diagnostic = Diagnostic::error()
+            .with_message(&out_message)
+            .with_labels(out_labels);
+
+        let config = codespan_reporting::term::Config::default();
+        return term::emit(out, &config, &files, &diagnostic).map_err(|_| core::fmt::Error);
     }
 }
 
