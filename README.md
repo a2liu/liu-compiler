@@ -21,6 +21,9 @@ file, so that this stuff is easier to do.
 Make compiler nice to work with as a library, so we can run experiments on what
 kinds of patterns are helpful and what arent.
 
+Can also add this compiler as library to TCI lol, and have TCI target this as
+its backend.
+
 ## Eventual Goals
 1.  Easy to develop on for those familiar with C semantics
 2.  Easy to write scripts to automate the simple things
@@ -78,26 +81,13 @@ kinds of patterns are helpful and what arent.
 - Garbage collection
 - RAII
 
-
 ## Intended Architecture
-
-AST memory layout:
--   Since location information is not accessed during most of compilation,
-    AST is laid out with structure in one arena and locations in the other.
--   parser threads ask for large ranges; data in these ranges are locked to the
-    file being parsed
--   File markers are not necessary on every location, so attach them to the
-    range
--   Use 32-bit IDs instead of references. If it really comes to it, we can parse
-    while concurrently typechecking to free up more ID space, but it seems unnecessary.
+### NOTE: NONE OF THIS IS IMPLEMENTED
 
 Bytecode memory layout:
 -   Global garbage collector manages basic block lifetimes/allocations
 -   Once data is written it's read-only, rewriters write new basic blocks and
     write to a global ID table
--   ID table can maaaaybe be pre-allocated? idk
-
-### NOTE: NONE OF THIS IS IMPLEMENTED
 
 lexing/parsing -> one global lexer thread, X parser threads
 
@@ -107,7 +97,6 @@ lexing/parsing -> one global lexer thread, X parser threads
     2. parser sends additional file paths to lexer
 
 3.  goto 1
-
 
 checking -> one global type database/thread, AST checking done by multiple threads
 
