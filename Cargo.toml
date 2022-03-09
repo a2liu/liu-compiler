@@ -1,5 +1,9 @@
 [package]
 name = "liu"
+description = "Albert Liu's programming language"
+license = "MIT"
+homepage = "https://github.com/A1Liu/liu"
+repository = "https://github.com/A1Liu/liu"
 version = "0.0.1"
 edition = "2021"
 
