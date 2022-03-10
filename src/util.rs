@@ -1,7 +1,9 @@
 pub use aliu::*;
 use alloc::alloc::Layout;
 use core::cell::Cell;
+use core::marker::PhantomData;
 use core::ptr::NonNull;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 #[repr(C)]
 pub struct HeapArrayData<Tag, Item>
