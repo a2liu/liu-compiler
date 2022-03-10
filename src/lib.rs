@@ -22,7 +22,7 @@ mod ast;
 mod checker;
 mod errors;
 mod graph;
-// mod interp;
+mod interp;
 mod parser;
 mod types;
 mod util;
@@ -31,7 +31,7 @@ pub use ast::*;
 pub use checker::*;
 pub use errors::*;
 pub use graph::*;
-// pub use interp::*;
+pub use interp::*;
 pub use parser::*;
 pub use types::*;
 
@@ -92,10 +92,10 @@ mod tests {
 
         let ast = parse(&table, 0, data)?;
 
-        let env = check_ast(&ast)?;
+        let graph = check_ast(&ast)?;
 
         let mut out = String::new();
-        // interpret(&ast, &env, &mut out);
+        interpret(&graph, &mut out);
 
         return Ok(out);
     }

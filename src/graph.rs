@@ -14,6 +14,7 @@ pub enum ControlKind {
         id_if_true: u32,
         id_if_false: u32,
     },
+    ExitSuccess,
     Jump {
         id: u32,
     },

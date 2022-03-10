@@ -3,10 +3,10 @@ use crate::*;
 use core::fmt::Write;
 use std::collections::hash_map::HashMap;
 
-pub fn interpret(ast: &Ast, env: &TypeEnv, stdout: &mut dyn Write) {
+pub fn interpret(graph: &Graph, stdout: &mut dyn Write) {
     let mut stack = BucketList::new();
 
-    let mut interp = Interp { env, stdout };
+    let mut interp = Interp { graph, stdout };
 
     let mut values = HashMap::new();
 
@@ -15,21 +15,22 @@ pub fn interpret(ast: &Ast, env: &TypeEnv, stdout: &mut dyn Write) {
         alloc: stack.scoped(),
     };
 
-    interp.block(scope, &ast.block);
+    interp.block(scope, graph.blocks[0u32]);
 }
 
 struct Interp<'a> {
-    env: &'a TypeEnv,
+    graph: &'a Graph,
     stdout: &'a mut dyn Write,
 }
 
 impl<'a> Interp<'a> {
-    fn block(&mut self, mut scope: Scope, block: &Block) {
-        for expr in block.stmts {
-            self.expr(&mut scope, expr);
+    fn block(&mut self, mut scope: Scope, block: BBInfo) {
+        for expr in &self.graph.ops[block.ops] {
+            //self.expr(&mut scope, expr);
         }
     }
 
+    /*
     fn expr(&mut self, scope: &mut Scope, id: ExprId) -> Register {
         use ExprKind::*;
 
@@ -98,6 +99,7 @@ impl<'a> Interp<'a> {
             e => unimplemented!("{:?}", e),
         }
     }
+    */
 }
 
 struct Scope<'a> {
@@ -113,6 +115,15 @@ impl<'a> Scope<'a> {
         };
     }
 }
+
+#[derive(Debug)]
+pub struct AllocInfo {
+    pub alloc_loc: ExprId,
+    pub free_loc: ExprId,
+    pub len: u32,
+}
+
+struct Memory {}
 
 const ZERO: Register = Register { value: 0 };
 

@@ -35,7 +35,7 @@ const NULL: Value = Value {
     ty: Type::Null,
 };
 
-pub fn check_ast(ast: &Ast) -> Result<TypeEnv, Error> {
+pub fn check_ast(ast: &Ast) -> Result<Graph, Error> {
     let mut types = TypeEnv {};
 
     let mut scope = ScopeEnv {
@@ -57,7 +57,9 @@ pub fn check_ast(ast: &Ast) -> Result<TypeEnv, Error> {
         env.check_expr(expr)?;
     }
 
-    return Ok(types);
+    graph.complete_block(ControlKind::ExitSuccess);
+
+    return Ok(graph);
 }
 
 pub struct TypeEnv {}
