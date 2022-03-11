@@ -12,6 +12,11 @@ pub struct AllocInfo {
     pub len: u32,
 }
 
+#[derive(Clone, Copy)]
+pub struct StackFrame {}
+
 pub struct Memory {
     pub heap_data: Pod<u8>,
+    pub stack_data: Pod<u8>,
+    pub stack_frames: Pod<StackFrame>,
 }
