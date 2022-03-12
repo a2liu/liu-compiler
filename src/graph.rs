@@ -7,19 +7,6 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 // bruh, idk what the deal is. idk what kind of system to use here. we'll figure
 // it out later ig.
 
-#[derive(Clone, Copy)]
-pub enum ControlKind {
-    BranchNeqZero {
-        conditional: u32,
-        id_if_true: u32,
-        id_if_false: u32,
-    },
-    ExitSuccess,
-    Jump {
-        id: u32,
-    },
-}
-
 // during codegen we can use lifetime information to turn references to a stack
 // local into op result references
 #[derive(Debug, Clone, Copy)]
@@ -33,29 +20,67 @@ pub enum Operand {
 #[derive(Clone, Copy)]
 pub enum OpKind {
     // Stores: no output value
-    Store8 { pointer: Operand, value: Operand },
-    Store16 { pointer: Operand, value: Operand },
-    Store32 { pointer: Operand, value: Operand },
-    Store64 { pointer: Operand, value: Operand },
+    Store8 {
+        pointer: Operand,
+        value: Operand,
+    },
+    Store16 {
+        pointer: Operand,
+        value: Operand,
+    },
+    Store32 {
+        pointer: Operand,
+        value: Operand,
+    },
+    Store64 {
+        pointer: Operand,
+        value: Operand,
+    },
 
-    Load8 { pointer: Operand },
-    Load16 { pointer: Operand },
-    Load32 { pointer: Operand },
-    Load64 { pointer: Operand },
+    Load8 {
+        pointer: Operand,
+    },
+    Load16 {
+        pointer: Operand,
+    },
+    Load32 {
+        pointer: Operand,
+    },
+    Load64 {
+        pointer: Operand,
+    },
 
     // SSA block parameter/phi node stuff
-    Forward { block_input_id: u32, id: Operand },
+    Forward {
+        block_input_id: u32,
+        id: Operand,
+    },
     BlockInput {},
 
-    Add64 { op1: Operand, op2: Operand },
+    Add64 {
+        op1: Operand,
+        op2: Operand,
+    },
 
-    BuiltinPrint { op: Operand },
+    BuiltinPrint {
+        op: Operand,
+    },
     BuiltinNewline,
+
+    // Control flow
+    BranchNeqZero {
+        conditional: u32,
+        block_if_true: u32,
+        block_if_false: u32,
+    },
+    ExitSuccess,
+    Jump {
+        block: u32,
+    },
 }
 
 #[derive(Clone, Copy)]
 pub struct BBInfo {
-    pub control: ControlKind,
     pub ops: CopyRange,
 }
 
@@ -76,7 +101,7 @@ impl Graph {
         };
     }
 
-    pub fn complete_block(&mut self, control: ControlKind) -> u32 {
+    pub fn complete_block(&mut self) -> u32 {
         let begin = self.current_begin;
         let end = self.ops.len();
 
@@ -84,7 +109,7 @@ impl Graph {
 
         let ops = r(begin, end);
 
-        self.blocks.push(BBInfo { control, ops });
+        self.blocks.push(BBInfo { ops });
 
         return id;
     }

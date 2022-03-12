@@ -228,6 +228,12 @@ impl Iterator for ExprRangeIter {
 }
 
 impl ExprId {
+    pub const NULL: Self = Self(u32::MAX);
+
+    pub fn is_null(self) -> bool {
+        return self.0 == u32::MAX;
+    }
+
     pub fn loc(self) -> CodeLoc {
         let arena = &*AST_ALLOC;
 

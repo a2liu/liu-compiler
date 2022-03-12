@@ -57,7 +57,8 @@ pub fn check_ast(ast: &Ast) -> Result<Graph, Error> {
         env.check_expr(expr)?;
     }
 
-    graph.complete_block(ControlKind::ExitSuccess);
+    graph.add(OpKind::ExitSuccess, ExprId::NULL);
+    graph.complete_block();
 
     return Ok(graph);
 }
