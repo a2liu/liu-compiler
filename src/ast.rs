@@ -151,6 +151,7 @@ lazy_static! {
 }
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
+#[repr(transparent)]
 pub struct ExprId(u32);
 
 #[derive(Debug, Clone, Copy)]
