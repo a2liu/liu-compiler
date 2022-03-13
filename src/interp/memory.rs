@@ -17,6 +17,7 @@ pub struct Memory {
     memory: Pod<u8>,
 
     alloc_info: Pod<AllocInfo>,
+
     stack_pointer_map: Pod<u32>,
     stack_frames: Pod<StackFrame>,
 }
@@ -402,5 +403,6 @@ mod tests {
     #[test]
     fn type_sizing() {
         assert_eq!(mem::size_of::<AllocInfo>(), 12);
+        assert_eq!(mem::size_of::<ExprId>(), 4);
     }
 }
