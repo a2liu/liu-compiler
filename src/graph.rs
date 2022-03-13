@@ -19,6 +19,10 @@ pub enum Operand {
 
 #[derive(Clone, Copy)]
 pub enum OpKind {
+    Loc {
+        expr: ExprId,
+    },
+
     // Stores: no output value
     Store8 {
         pointer: Operand,
@@ -85,7 +89,6 @@ pub struct BBInfo {
 }
 
 pub struct Graph {
-    pub source: Pod<ExprId>,
     pub ops: Pod<OpKind>,
     pub blocks: Pod<BBInfo>,
     current_begin: usize,
@@ -94,7 +97,6 @@ pub struct Graph {
 impl Graph {
     pub fn new() -> Self {
         return Graph {
-            source: Pod::new(),
             ops: Pod::new(),
             blocks: Pod::new(),
             current_begin: 0,
@@ -114,10 +116,13 @@ impl Graph {
         return id;
     }
 
-    pub fn add(&mut self, op: OpKind, loc: ExprId) -> Operand {
+    pub fn loc(&mut self, expr: ExprId) {
+        self.ops.push(OpKind::Loc { expr });
+    }
+
+    pub fn add(&mut self, op: OpKind) -> Operand {
         let id = self.ops.len() as u32;
 
-        self.source.push(loc);
         self.ops.push(op);
 
         return Operand::OpResult { id };

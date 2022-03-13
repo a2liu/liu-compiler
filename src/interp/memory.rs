@@ -8,7 +8,6 @@ const MAX_STACK_SIZE: u32 = 4 * 1024 * 1024;
 const MAX_STACK_FRAMES: usize = 4000;
 
 pub struct Memory {
-    graph: Graph,
     current_frame: StackFrame,
 
     stack_byte_size: u32,
@@ -28,8 +27,11 @@ pub struct Ptr {
 
 #[derive(Clone, Copy)]
 struct StackFrame {
+    expr: ExprId,
     program_counter: u32,
     map_offset: u32,
+    begin: u32,
+    word_len: u8,
 }
 
 // IDK why this is necessary, but before this struct was like 20 bytes, and now
@@ -73,12 +75,14 @@ pub enum AllocInfo {
 }
 
 impl Memory {
-    pub fn new(graph: Graph) -> Self {
+    pub fn new() -> Self {
         return Self {
-            graph,
             current_frame: StackFrame {
+                expr: ExprId::NULL,
                 program_counter: 0,
                 map_offset: 0,
+                begin: 0,
+                word_len: 0,
             },
 
             stack_byte_size: 0,
@@ -107,7 +111,7 @@ impl Memory {
         let alloc_info_id = self.alloc_info.len() as u32;
 
         self.alloc_info.push(AllocInfo::StackLive {
-            create_expr: self.graph.source[self.current_frame.program_counter],
+            create_expr: self.current_frame.expr,
             begin,
             len,
             len_power,
@@ -146,7 +150,7 @@ impl Memory {
 
                     *alloc_info = StackDead {
                         create_expr,
-                        destroy_expr: self.graph.source[self.current_frame.program_counter],
+                        destroy_expr: self.current_frame.expr,
                     };
                 }
 
@@ -158,19 +162,14 @@ impl Memory {
     }
 
     #[inline]
-    pub fn read_op(&self) -> OpKind {
-        return self.graph.ops[self.current_frame.program_counter];
-    }
-
-    #[inline]
     pub fn next_op(&mut self) -> Result<(), Error> {
         return self.jmp(self.current_frame.program_counter + 1);
     }
 
     pub fn jmp(&mut self, id: u32) -> Result<(), Error> {
-        if id >= self.graph.ops.len() as u32 {
-            return Err(Error::new("jump target invalid", self.loc()));
-        }
+        // if id >= self.graph.ops.len() as u32 {
+        //     return Err(Error::new("jump target invalid", self.loc()));
+        // }
 
         self.current_frame.program_counter = id;
 
@@ -289,8 +288,7 @@ impl Memory {
     }
 
     pub fn loc(&self) -> CodeLoc {
-        let expr = self.graph.source[self.current_frame.program_counter];
-        return expr.loc();
+        return self.current_frame.expr.loc();
     }
 }
 

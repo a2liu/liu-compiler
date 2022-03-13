@@ -57,7 +57,9 @@ pub fn check_ast(ast: &Ast) -> Result<Graph, Error> {
         env.check_expr(expr)?;
     }
 
-    graph.add(OpKind::ExitSuccess, ExprId::NULL);
+    graph.loc(ExprId::NULL);
+    graph.add(OpKind::ExitSuccess);
+
     graph.complete_block();
 
     return Ok(graph);
@@ -139,13 +141,11 @@ impl<'a> CheckEnv<'a> {
 
                 let id = self.scope.declare(id, symbol, result.ty)?;
 
-                self.graph.add(
-                    OpKind::Store64 {
-                        pointer: Operand::ReferenceToStackLocal { id, offset: 0 },
-                        value: result.op,
-                    },
-                    value,
-                );
+                self.graph.loc(value);
+                self.graph.add(OpKind::Store64 {
+                    pointer: Operand::ReferenceToStackLocal { id, offset: 0 },
+                    value: result.op,
+                });
 
                 return Ok(NULL);
             }
@@ -158,15 +158,13 @@ impl<'a> CheckEnv<'a> {
                     }
                 };
 
-                let op = self.graph.add(
-                    OpKind::Load64 {
-                        pointer: Operand::ReferenceToStackLocal {
-                            id: var_info.id,
-                            offset: 0,
-                        },
+                self.graph.loc(id);
+                let op = self.graph.add(OpKind::Load64 {
+                    pointer: Operand::ReferenceToStackLocal {
+                        id: var_info.id,
+                        offset: 0,
                     },
-                    id,
-                );
+                });
 
                 return Ok(Value::new(op, var_info.ty));
             }
@@ -182,13 +180,11 @@ impl<'a> CheckEnv<'a> {
                     ));
                 }
 
-                let op = self.graph.add(
-                    OpKind::Add64 {
-                        op1: left_value.op,
-                        op2: right_value.op,
-                    },
-                    id,
-                );
+                self.graph.loc(id);
+                let op = self.graph.add(OpKind::Add64 {
+                    op1: left_value.op,
+                    op2: right_value.op,
+                });
 
                 return Ok(Value::new(op, left_value.ty));
             }
@@ -220,10 +216,12 @@ impl<'a> CheckEnv<'a> {
                 for arg in args {
                     let value = self.check_expr(arg)?;
 
-                    self.graph.add(OpKind::BuiltinPrint { op: value.op }, arg);
+                    self.graph.loc(arg);
+                    self.graph.add(OpKind::BuiltinPrint { op: value.op });
                 }
 
-                self.graph.add(OpKind::BuiltinNewline, id);
+                self.graph.loc(id);
+                self.graph.add(OpKind::BuiltinNewline);
 
                 return Ok(NULL);
             }
