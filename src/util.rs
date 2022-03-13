@@ -4,6 +4,7 @@ use core::cell::Cell;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
+pub use std::collections::hash_map::HashMap;
 
 #[repr(C)]
 pub struct HeapArrayData<Tag, Item>

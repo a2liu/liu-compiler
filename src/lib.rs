@@ -47,10 +47,10 @@ mod tests {
     //     run_on_file("procedures.liu", "");
     // }
 
-    #[test]
-    fn simple() {
-        run_on_file("simple.liu", "12 37\n12\n");
-    }
+    // #[test]
+    // fn simple() {
+    //     run_on_file("simple.liu", "12 37\n12\n");
+    // }
 
     fn run_on_file(name: &str, expected: &str) {
         let mut path = "tests/".to_string();
