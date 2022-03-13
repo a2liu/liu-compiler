@@ -12,7 +12,10 @@ pub struct Memory {
 
     stack_byte_size: u32,
 
+    // eventually, this should be garbage-collected; probably should just
+    // be a custom GC, don't try to make something generic
     memory: Pod<u8>,
+
     alloc_info: Pod<AllocInfo>,
     stack_pointer_map: Pod<u32>,
     stack_frames: Pod<StackFrame>,
