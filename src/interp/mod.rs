@@ -7,4 +7,21 @@ use core::num::NonZeroU32;
 mod memory;
 mod types;
 
-pub fn interpret(graph: &Graph, stdout: &mut dyn Write) {}
+pub use memory::*;
+pub use types::*;
+
+pub struct Interpreter<'a> {
+    memory: Memory,
+    out: &'a mut dyn Write,
+}
+
+impl<'a> Interpreter<'a> {
+    pub fn new(out: &'a mut dyn Write) -> Self {
+        return Self {
+            memory: Memory::new(),
+            out,
+        };
+    }
+
+    pub fn run(&mut self) {}
+}

@@ -1,4 +1,3 @@
-use crate::util::*;
 use crate::*;
 use core::cell::*;
 use core::mem::*;
@@ -154,7 +153,7 @@ lazy_static! {
 #[repr(transparent)]
 pub struct ExprId(u32);
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ExprRange(u32, u32);
 
 impl ExprRange {

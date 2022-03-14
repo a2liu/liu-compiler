@@ -1,4 +1,3 @@
-use crate::util::*;
 use crate::*;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::term;

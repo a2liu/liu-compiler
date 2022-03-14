@@ -34,6 +34,7 @@ pub use graph::*;
 pub use interp::*;
 pub use parser::*;
 pub use types::*;
+pub use util::*;
 
 #[cfg(test)]
 mod tests {
@@ -95,7 +96,8 @@ mod tests {
         let graph = check_ast(&ast)?;
 
         let mut out = String::new();
-        interpret(&graph, &mut out);
+        let mut interp = Interpreter::new(&mut out);
+        interp.run();
 
         return Ok(out);
     }
