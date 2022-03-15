@@ -723,16 +723,22 @@ pub fn compress_alloc_len(input_len: u32) -> (u8, u8) {
 
     if len_power as u32 <= input_len.trailing_zeros() {
         let len = (input_len >> len_power) as u8;
-        let mut lossy = (len as u32) << len_power;
 
+        let lossy = (len as u32) << len_power;
         debug_assert_eq!(lossy, input_len);
+
         return (len, len_power);
     }
 
+    // we need to round up here, because this compression is used for allocation
+    // lengths, where the output length must always be larger than the input length
     let rounded_input_len = (1u32 << len_power) + input_len;
     let leading_zeros = rounded_input_len.leading_zeros() as u8;
     let len_power = (32 - leading_zeros).saturating_sub(8);
     let len = (rounded_input_len >> len_power) as u8;
+
+    let lossy = (len as u32) << len_power;
+    debug_assert!(lossy >= input_len);
 
     return (len, len_power);
 }
