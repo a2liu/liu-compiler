@@ -366,7 +366,6 @@ pub enum AllocInfo {
     },
     StackDead {
         creation_op: u32,
-        dealloc_op: u32,
     },
 
     HeapLive {
@@ -408,9 +407,12 @@ impl AllocInfo {
                 (begin, len, len_power)
             }
 
-            StackDead { creation_op, dealloc_op, }
-            | HeapDead { creation_op, dealloc_op, } => {
-                return Err(IError::new("hello"));
+            StackDead { creation_op, } => {
+                return Err(IError::new("stackdead"));
+            }
+
+            HeapDead { creation_op, dealloc_op, } => {
+                return Err(IError::new("stackdead"));
             }
         };
 
@@ -541,7 +543,7 @@ impl AllocTracker {
         return (ptr, lossy_len);
     }
 
-    pub fn dealloc_stack(&mut self, ptr: Ptr, dealloc_op: u32) -> Result<u32, IError> {
+    pub fn dealloc_stack(&mut self, ptr: Ptr) -> Result<u32, IError> {
         use AllocInfo::*;
 
         let alloc_info = self.get_alloc_info_mut(ptr)?;
@@ -554,10 +556,7 @@ impl AllocTracker {
             } => {
                 let len = decompress_alloc_len(len, len_power);
 
-                *alloc_info = StackDead {
-                    creation_op,
-                    dealloc_op,
-                };
+                *alloc_info = StackDead { creation_op };
 
                 return Ok(len);
             }

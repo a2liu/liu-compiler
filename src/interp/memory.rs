@@ -102,8 +102,7 @@ impl Memory {
                 offset: 9,
             };
 
-            let program_counter = self.current_frame.program_counter;
-            let len = self.data.dealloc_stack(ptr, program_counter)?;
+            let len = self.data.dealloc_stack(ptr)?;
             self.stack_byte_size -= len;
         }
 
