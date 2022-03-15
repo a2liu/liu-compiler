@@ -9,6 +9,11 @@ const MAX_STACK_FRAMES: usize = 4000;
 pub struct Memory {
     data: AllocTracker,
 
+    // bounds of static exe allocation, use these to calculate program counter
+    // and do bounds checking
+    static_exe_begin: u32,
+    static_exe_end: u32,
+
     stack_byte_size: u32,
     current_frame: StackFrame,
 
@@ -32,7 +37,6 @@ impl core::ops::DerefMut for Memory {
 
 #[derive(Clone, Copy)]
 struct StackFrame {
-    alloc_info_id: u32,
     program_counter: u32,
     map_offset: u32,
     begin: u32,
@@ -52,15 +56,16 @@ impl Memory {
         return Self {
             data: AllocTracker::new(),
 
+            static_exe_begin: 0,
+            static_exe_end: 0,
+            stack_byte_size: 0,
             current_frame: StackFrame {
                 // TODO use real info
-                alloc_info_id: 0,
                 program_counter: 0,
                 map_offset: 0,
                 begin: 0,
                 word_len: 0,
             },
-            stack_byte_size: 0,
 
             stack_frames: Pod::new(),
             stack_pointer_map: Pod::new(),

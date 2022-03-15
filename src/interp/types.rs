@@ -66,69 +66,229 @@ impl IError {
 //      using compression style from interp/memory.rs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-#[repr(u8)]
+#[repr(align(4))]
 pub enum Opcode {
     Func, // opcode u8 u16
 
-    StackAlloc,   // opcode u8-len-power u8-len u8
-    StackDealloc, // opcode u8 u16-count
-    HeapAlloc,    // opcode u8-register-output u8-register-64-input u8
-    HeapDealloc,  // opcode u8-register-64-input u16
+    // opcode u8-len-power u8-len u8
+    StackAlloc {
+        len: u8,
+        len_power: u8,
+    },
+    // opcode u8 u16-count
+    StackDealloc {
+        count: u16,
+    },
+    // opcode u8-register-output u8-register-64-input u8
+    HeapAlloc {
+        register_out: u8,
+        register_64_in: u8,
+    },
+    // opcode u8-register-64-input u16
+    HeapDealloc {
+        register_64_input: u8,
+    },
 
-    Make16, // opcode u8-register-output u16-value
-    Make32, // opcode u8-register-output u16-stack-slot u32-value
-    Make64, // opcode u8-register-output u16-stack-slot u32-value-high-order-bits u32-low-order-bits
-    MakeFp, // opcode u8-register-output u16-stack-id
+    // opcode u8-register-output u16-value
+    Make16 {
+        register_out: u8,
+    },
+    // opcode u8-register-output u16-stack-slot u32-value
+    Make32 {
+        register_out: u8,
+        stack_slot: u16,
+    },
+    // opcode u8-register-output u16-stack-slot u32-value-high-order-bits u32-low-order-bits
+    Make64 {
+        register_out: u8,
+        stack_slot: u16,
+    },
+    // opcode u8-register-output u16-stack-id
+    MakeFp {
+        register_out: u8,
+        stack_id: u16,
+    },
 
     // in-place
-    Truncate, // opcode u8-register-output u16-stack-slot
-    BoolNorm, // opcode u8-register-output u16-stack-slot
-    BoolNot,  // opcode u8-register-output u16-stack-slot
+    // opcode u8-register-output u16-stack-slot
+    Truncate {
+        register_out: u8,
+        stack_slot: u16,
+    },
+    // opcode u8-register-output u16-stack-slot
+    BoolNorm {
+        register_out: u8,
+        stack_slot: u16,
+    },
+    // opcode u8-register-output u16-stack-slot
+    BoolNot,
 
-    Get, // opcode u8-register-output u8-register-pointer-input u8
-    Set, // opcode u8-register-pointer-input u8-register-input u8
+    // opcode u8-register-output u8-register-pointer-input u8
+    Get {
+        register_out: u8,
+        register_pointer_in: u8,
+    },
+    // opcode u8-register-pointer-input u8-register-input u8
+    Set {
+        register_pointer_in: u8,
+        register_input: u8,
+    },
 
     // Register inputs are source, destination, length
-    MemCopy, // opcode u8-register-pointer-input u8-register-pointer-input u8-register-64-input
+    // opcode u8-register-pointer-input u8-register-pointer-input u8-register-64-input
+    MemCopy {
+        register_pointer_in_src: u8,
+        register_pointer_in_dest: u8,
+        register_pointer_64_in: u8,
+    },
 
     // Wrapping Integer operations
     // register-output signed-ness determines both the sign-extension of inputs
     // into 64 bits and also the operation signed-ness
-    Add, // opcode u8-register-output u8-register-input u8-register-input
-    Sub, // opcode u8-register-output u8-register-input u8-register-input
-    Mul, // opcode u8-register-output u8-register-input u8-register-input
-    Div, // opcode u8-register-output u8-register-input u8-register-input
-    Mod, // opcode u8-register-output u8-register-input u8-register-input
+    // opcode u8-register-output u8-register-input u8-register-input
+    Add {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    Sub {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    Mul {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    Div {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    Mod {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
 
-    RShift, // opcode u8-register-output u8-register-input u8-register-input
-    LShift, // opcode u8-register-output u8-register-input u8-register-input
+    // opcode u8-register-output u8-register-input u8-register-input
+    RShift {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    LShift {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
 
     // Ignores signedness
-    BitAnd, // opcode u8-register-output u8-register-input u8-register-input
-    BitOr,  // opcode u8-register-output u8-register-input u8-register-input
-    BitXor, // opcode u8-register-output u8-register-input u8-register-input
-    BitNot, // opcode u8-register-output u8-register-input u8-register-input
+    // opcode u8-register-output u8-register-input u8-register-input
+    BitAnd {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    BitOr {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    BitXor {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    BitNot {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
 
     // Floating point
-    FAdd, // opcode u8-register-output u8-register-input u8-register-input
-    FSub, // opcode u8-register-output u8-register-input u8-register-input
-    FMul, // opcode u8-register-output u8-register-input u8-register-input
-    FDiv, // opcode u8-register-output u8-register-input u8-register-input
-    FMod, // opcode u8-register-output u8-register-input u8-register-input
+    // opcode u8-register-output u8-register-input u8-register-input
+    FAdd {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    FSub {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    FMul {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    FDiv {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    FMod {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
 
     // register-output size is implicitly ignored, because its not relevant here
     // register-output signed-ness determines both the sign-extension of inputs
     // into 64 bits and also the comparison signed-ness
-    CompLt,  // opcode u8-register-output u8-register-input u8-register-input
-    CompLeq, // opcode u8-register-output u8-register-input u8-register-input
-    CompEq,  // opcode u8-register-output u8-register-input u8-register-input
-    CompNeq, // opcode u8-register-output u8-register-input u8-register-input
+    // opcode u8-register-output u8-register-input u8-register-input
+    CompLt {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    CompLeq {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    CompEq {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
+    // opcode u8-register-output u8-register-input u8-register-input
+    CompNeq {
+        register_out: u8,
+        register_in_left: u8,
+        register_in_right: u8,
+    },
 
     // The jumps here stays in the same allocation as they started in; the address
     // parameter only touches the offset part of the pointer
-    Jump,          // opcode u8 u16 u32-address
-    JumpIfZero,    // opcode u8-register-input u16-stack-slot u32-address
-    JumpIfNotZero, // opcode u8-register-input u16-stack-slot u32-address
+    // opcode u8 u16 u32-address
+    Jump,
+    // opcode u8-register-input u16-stack-slot u32-address
+    JumpIfZero {
+        register_in: u8,
+        stack_slot: u16,
+    },
+    // opcode u8-register-input u16-stack-slot u32-address
+    JumpIfNotZero {
+        register_in: u8,
+        stack_slot: u16,
+    },
 
     Ret, // opcode u8 u16
 
@@ -142,13 +302,39 @@ pub enum Opcode {
     //
     // The jump here stays in the same allocation as it started in; the address
     // parameter only touches the offset part of the pointer
-    Call, // opcode u8-register-output u8-arg-count u8 u32-address
+    // opcode u8-register-output u8-arg-count u8 u32-address
+    Call {
+        register_out: u8,
+        arg_count: u8,
+    },
 
     // Register inputs are interpreted differently depending on context
-    Ecall, // opcode u8-ecall-type u8-register-64-input u8-register-64-input
+    // opcode u8-ecall-type u8-register-64-input u8-register-64-input
+    Ecall {
+        ecall_type: u8,
+        register_64_input_1: u8,
+        register_64_input_2: u8,
+    },
 
     // Register inputs are string pointer and string length
-    Throw, // opcode u8-skip-frames u8-register-input u8-register-64-input
+    // opcode u8-skip-frames u8-register-pointer-input u8-register-64-input
+    Throw {
+        skip_frames: u8,
+        register_pointer_input: u8,
+        register_64_input: u8,
+    },
+}
+
+impl From<u32> for Opcode {
+    fn from(value: u32) -> Opcode {
+        return unsafe { core::mem::transmute(value) };
+    }
+}
+
+impl Into<u32> for Opcode {
+    fn into(self) -> u32 {
+        return unsafe { core::mem::transmute(self) };
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -161,7 +347,6 @@ pub struct Ptr {
 }
 
 #[derive(Clone, Copy)]
-
 pub enum AllocKind {
     Stack,
     Heap,
@@ -260,6 +445,61 @@ impl AllocTracker {
         return bytes;
     }
 
+    #[inline]
+    pub fn get_op_data(&self, index: u32) -> u32 {
+        let pointer = &self.bytes[index] as *const u8;
+
+        let offset = pointer.align_offset(4);
+        debug_assert_eq!(offset, 0);
+
+        return unsafe { *(pointer as *const u32) };
+    }
+
+    pub fn alloc_exe(&mut self, alloc_len: u32) -> &mut [u32] {
+        use AllocInfo::*;
+        use AllocKind::*;
+
+        let bytes_len = self.bytes.len();
+
+        self.bytes.push(0);
+
+        // align the data before doing anything
+        let offset = (&self.bytes[bytes_len] as *const u8).align_offset(4);
+
+        // &bytes[begin] is an 4-byte aligned reference
+        let begin = (bytes_len + offset) as u32;
+
+        let (len, len_power) = compress_alloc_len(alloc_len * 4);
+        let lossy_len = decompress_alloc_len(len, len_power);
+
+        let additional = (begin + lossy_len) as usize - self.bytes.len();
+        self.bytes.reserve(additional);
+
+        for _ in 0..additional {
+            self.bytes.push(0);
+        }
+
+        let info = StaticExe {
+            begin,
+            len,
+            len_power,
+        };
+
+        self.alloc_info.push(info);
+
+        let alloc_info_id = self.alloc_info.len() as u32;
+
+        let ptr = Ptr {
+            offset: 0,
+            alloc_info_id,
+        };
+
+        let bytes = &mut self.bytes[r(begin, begin + lossy_len)];
+        let pointer = bytes.as_mut_ptr() as *mut u32;
+
+        return unsafe { core::slice::from_raw_parts_mut(pointer, lossy_len as usize / 4) };
+    }
+
     pub fn alloc(&mut self, kind: AllocKind, len: u32, creation_op: u32) -> (Ptr, u32) {
         use AllocInfo::*;
         use AllocKind::*;
@@ -323,6 +563,40 @@ impl AllocTracker {
             }
 
             _ => return Err(IError::new("internal error")),
+        }
+    }
+
+    pub fn dealloc_heap(&mut self, ptr: Ptr, dealloc_op: u32) -> Result<u32, IError> {
+        use AllocInfo::*;
+
+        let alloc_info = self.get_alloc_info_mut(ptr)?;
+        match *alloc_info {
+            HeapLive {
+                creation_op,
+                begin,
+                len,
+                len_power,
+            } => {
+                let len = decompress_alloc_len(len, len_power);
+
+                *alloc_info = HeapDead {
+                    creation_op,
+                    dealloc_op,
+                };
+
+                return Ok(len);
+            }
+
+            HeapDead {
+                creation_op,
+                dealloc_op,
+            } => {
+                return Err(IError::new(
+                    "tried to free memory that has already been freed (aka double-free)",
+                ));
+            }
+
+            _ => return Err(IError::new("tried to free memory that isn't on the heap")),
         }
     }
 
@@ -500,5 +774,7 @@ mod tests {
     fn type_sizing() {
         assert_eq!(mem::size_of::<AllocInfo>(), 12);
         assert_eq!(mem::size_of::<ExprId>(), 4);
+        assert_eq!(mem::size_of::<Opcode>(), 4);
+        assert_eq!(mem::align_of::<Opcode>(), 4);
     }
 }
