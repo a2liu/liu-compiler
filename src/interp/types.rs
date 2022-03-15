@@ -422,20 +422,34 @@ impl AllocInfo {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BinaryManifest {
+    // bounds of static exe allocation, use these to calculate program counter
+    // and do bounds checking
+    static_exe_begin: u32,
+    static_exe_end: u32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AllocTracker {
     // eventually, this should be garbage-collected; probably should just
     // be a custom GC, don't try to make something generic
     bytes: Pod<u8>,
     pub alloc_info: Pod<AllocInfo>,
+    pub manifest: BinaryManifest,
 }
 
 impl AllocTracker {
     pub fn new() -> Self {
-        // Use manifest at alloc_index=0
+        // TODO Use manifest at alloc_index=0
+
         Self {
             bytes: Pod::new(),
             alloc_info: Pod::new(),
+            manifest: BinaryManifest {
+                static_exe_begin: 0,
+                static_exe_end: 0,
+            },
         }
     }
 

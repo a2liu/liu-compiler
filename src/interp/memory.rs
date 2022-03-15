@@ -9,11 +9,6 @@ const MAX_STACK_FRAMES: usize = 4000;
 pub struct Memory {
     data: AllocTracker,
 
-    // bounds of static exe allocation, use these to calculate program counter
-    // and do bounds checking
-    static_exe_begin: u32,
-    static_exe_end: u32,
-
     stack_byte_size: u32,
     current_frame: StackFrame,
 
@@ -56,8 +51,6 @@ impl Memory {
         return Self {
             data: AllocTracker::new(),
 
-            static_exe_begin: 0,
-            static_exe_end: 0,
             stack_byte_size: 0,
             current_frame: StackFrame {
                 // TODO use real info
