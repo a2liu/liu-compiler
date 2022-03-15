@@ -35,30 +35,27 @@ struct StackFrame {
     program_counter: u32,
     map_offset: u32,
     begin: u32,
-    word_len: u8,
 }
 
 impl Memory {
-    pub fn new() -> Self {
+    pub fn new(data: AllocTracker) -> Self {
         assert_eq!(
             any_as_u8_slice(&1u64),
             &[1u8, 0, 0, 0, 0, 0, 0, 0],
             "must be using little-endian platform"
         );
 
-        // TODO parse the binary
+        let current_frame = StackFrame {
+            program_counter: data.manifest.static_exe_begin,
+            map_offset: 0,
+            begin: 0,
+        };
 
         return Self {
-            data: AllocTracker::new(),
+            data,
 
             stack_byte_size: 0,
-            current_frame: StackFrame {
-                // TODO use real info
-                program_counter: 0,
-                map_offset: 0,
-                begin: 0,
-                word_len: 0,
-            },
+            current_frame,
 
             stack_frames: Pod::new(),
             stack_pointer_map: Pod::new(),
@@ -160,5 +157,16 @@ impl Memory {
             alloc_info_id,
             offset,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg_attr(target_arch = "x86_64", test)]
+    fn endianess() {
+        let data = AllocTracker::new();
+        let memory = Memory::new(data);
     }
 }

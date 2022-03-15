@@ -16,9 +16,9 @@ pub struct Interpreter<'a> {
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(out: &'a mut dyn Write) -> Self {
+    pub fn new(data: AllocTracker, out: &'a mut dyn Write) -> Self {
         return Self {
-            memory: Memory::new(),
+            memory: Memory::new(data),
             out,
         };
     }

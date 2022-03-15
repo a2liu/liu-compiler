@@ -426,8 +426,8 @@ impl AllocInfo {
 pub struct BinaryManifest {
     // bounds of static exe allocation, use these to calculate program counter
     // and do bounds checking
-    static_exe_begin: u32,
-    static_exe_end: u32,
+    pub static_exe_begin: u32,
+    pub static_exe_end: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -471,59 +471,9 @@ impl AllocTracker {
         return unsafe { *(pointer as *const u32) };
     }
 
-    pub fn alloc_exe(&mut self, alloc_len: u32) -> &mut [u32] {
-        use AllocInfo::*;
-        use AllocKind::*;
-
-        let bytes_len = self.bytes.len();
-
-        self.bytes.push(0);
-
-        // align the data before doing anything
-        let offset = (&self.bytes[bytes_len] as *const u8).align_offset(4);
-
-        // &bytes[begin] is an 4-byte aligned reference
-        let begin = (bytes_len + offset) as u32;
-
-        let (len, len_power) = compress_alloc_len(alloc_len * 4);
-        let lossy_len = decompress_alloc_len(len, len_power);
-
-        let additional = (begin + lossy_len) as usize - self.bytes.len();
-        self.bytes.reserve(additional);
-
-        for _ in 0..additional {
-            self.bytes.push(0);
-        }
-
-        let info = StaticExe {
-            begin,
-            len,
-            len_power,
-        };
-
-        self.alloc_info.push(info);
-
-        let alloc_info_id = self.alloc_info.len() as u32;
-
-        let ptr = Ptr {
-            offset: 0,
-            alloc_info_id,
-        };
-
-        let bytes = &mut self.bytes[r(begin, begin + lossy_len)];
-        let pointer = bytes.as_mut_ptr() as *mut u32;
-
-        return unsafe { core::slice::from_raw_parts_mut(pointer, lossy_len as usize / 4) };
-    }
-
-    pub fn alloc_static(&mut self, len: u32, creation_expr: ExprId) -> Ptr {
-        panic!()
-    }
-
-    pub fn alloc(&mut self, kind: AllocKind, len: u32, creation_op: u32) -> (Ptr, u32) {
-        use AllocInfo::*;
-        use AllocKind::*;
-
+    fn alloc_range(&mut self, len: u32) -> (CopyRange<u32>, u8, u8) {
+        // align the allocation to 8 bytes
+        let len = (len - 1) / 8 * 8 + 8;
         let begin = self.bytes.len() as u32;
 
         let (len, len_power) = compress_alloc_len(len);
@@ -533,6 +483,66 @@ impl AllocTracker {
         for _ in 0..lossy_len {
             self.bytes.push(0);
         }
+
+        let range = r(begin, begin + lossy_len);
+
+        #[cfg(debug_assertions)]
+        {
+            let ptr = &self.bytes[range.start] as *const u8;
+            assert_eq!(ptr.align_offset(8), 0);
+        }
+
+        return (range, len, len_power);
+    }
+
+    pub fn alloc_exe(&mut self, alloc_len: u32) -> &mut [u32] {
+        use AllocInfo::*;
+
+        let (range, len, len_power) = self.alloc_range(alloc_len);
+
+        let info = StaticExe {
+            begin: range.start,
+            len,
+            len_power,
+        };
+
+        self.alloc_info.push(info);
+
+        let bytes = &mut self.bytes[range];
+        let pointer = bytes.as_mut_ptr() as *mut u32;
+
+        return unsafe { core::slice::from_raw_parts_mut(pointer, range.len() as usize / 4) };
+    }
+
+    pub fn alloc_static(&mut self, len: u32, creation_expr: ExprId) -> (Ptr, u32) {
+        use AllocInfo::*;
+
+        let (range, len, len_power) = self.alloc_range(len);
+        let begin = range.start;
+
+        let info = StaticExe {
+            begin: range.start,
+            len,
+            len_power,
+        };
+
+        self.alloc_info.push(info);
+        let alloc_info_id = self.alloc_info.len() as u32;
+
+        let ptr = Ptr {
+            offset: 0,
+            alloc_info_id,
+        };
+
+        return (ptr, range.len());
+    }
+
+    pub fn alloc(&mut self, kind: AllocKind, len: u32, creation_op: u32) -> (Ptr, u32) {
+        use AllocInfo::*;
+        use AllocKind::*;
+
+        let (range, len, len_power) = self.alloc_range(len);
+        let begin = range.start;
 
         let info = match kind {
             Stack => StackLive {
@@ -558,7 +568,7 @@ impl AllocTracker {
             alloc_info_id,
         };
 
-        return (ptr, lossy_len);
+        return (ptr, range.len());
     }
 
     pub fn dealloc_stack(&mut self, ptr: Ptr) -> Result<u32, IError> {
@@ -807,6 +817,14 @@ mod tests {
 
             assert_eq!(expected_len, output_len, "index: {}", i);
             i += 1;
+        }
+    }
+
+    #[test]
+    fn test_alloc_alignment() {
+        let mut data = AllocTracker::new();
+        for i in 0..100 {
+            data.alloc_range(13);
         }
     }
 

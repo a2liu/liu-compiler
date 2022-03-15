@@ -96,7 +96,8 @@ mod tests {
         let graph = check_ast(&ast)?;
 
         let mut out = String::new();
-        let mut interp = Interpreter::new(&mut out);
+        let data = AllocTracker::new();
+        let mut interp = Interpreter::new(data, &mut out);
         interp.run();
 
         return Ok(out);
