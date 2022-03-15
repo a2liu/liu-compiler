@@ -516,6 +516,10 @@ impl AllocTracker {
         return unsafe { core::slice::from_raw_parts_mut(pointer, lossy_len as usize / 4) };
     }
 
+    pub fn alloc_static(&mut self, len: u32, creation_expr: ExprId) -> Ptr {
+        panic!()
+    }
+
     pub fn alloc(&mut self, kind: AllocKind, len: u32, creation_op: u32) -> (Ptr, u32) {
         use AllocInfo::*;
         use AllocKind::*;
@@ -712,11 +716,23 @@ pub fn decompress_alloc_len(len: u8, len_power: u8) -> u32 {
 }
 
 #[inline]
-pub fn compress_alloc_len(len: u32) -> (u8, u8) {
-    let leading_zeros = len.leading_zeros() as u8;
+pub fn compress_alloc_len(input_len: u32) -> (u8, u8) {
+    let leading_zeros = input_len.leading_zeros() as u8;
 
     let len_power = (32 - leading_zeros).saturating_sub(8);
-    let len = (len >> len_power) as u8;
+
+    if len_power as u32 <= input_len.trailing_zeros() {
+        let len = (input_len >> len_power) as u8;
+        let mut lossy = (len as u32) << len_power;
+
+        debug_assert_eq!(lossy, input_len);
+        return (len, len_power);
+    }
+
+    let rounded_input_len = (1u32 << len_power) + input_len;
+    let leading_zeros = rounded_input_len.leading_zeros() as u8;
+    let len_power = (32 - leading_zeros).saturating_sub(8);
+    let len = (rounded_input_len >> len_power) as u8;
 
     return (len, len_power);
 }
@@ -767,19 +783,24 @@ mod tests {
     #[test]
     fn test_alloc_len_compression_lossy() {
         let tests: &[(u32, u32)] = &[
-            ((255 << 20) + 1, 255 << 20),
-            ((255 << 21) + 1, 255 << 21),
-            ((255 << 22) + 1, 255 << 22),
-            ((255 << 23) + 1, 255 << 23),
-            ((255 << 23) + (1 << 22), 255 << 23),
+            ((254 << 20) + 1, 255 << 20),
+            ((254 << 20) + 1, 255 << 20),
+            ((254 << 21) + 1, 255 << 21),
+            ((254 << 22) + 1, 255 << 22),
+            ((254 << 23) + 1, 255 << 23),
+            ((254 << 23) + (1 << 22), 255 << 23),
+            ((255 << 20) + 1, 256 << 20),
+            ((255 << 20) + (1 << 11), 256 << 20),
         ];
 
+        let mut i = 0;
         for &(input_len, expected_len) in tests {
             let (compress_len, len_power) = compress_alloc_len(input_len);
 
             let output_len = decompress_alloc_len(compress_len, len_power);
 
-            assert_eq!(expected_len, output_len);
+            assert_eq!(expected_len, output_len, "index: {}", i);
+            i += 1;
         }
     }
 
