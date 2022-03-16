@@ -1,6 +1,7 @@
 use crate::*;
 use core::{fmt, mem};
 
+#[derive(Debug)]
 pub struct IError {
     message: String,
 }
@@ -13,7 +14,7 @@ impl IError {
     }
 }
 
-pub const RET_ID: u8 = 0;
+pub const REGISTER_CALL_ID: u8 = 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -65,9 +66,71 @@ impl In64Register {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
+pub struct Out64Register(u8);
+
+impl Out64Register {
+    pub fn null(signed: bool) -> Self {
+        let sign_bit = (signed as u8) << 7;
+
+        return Self(sign_bit);
+    }
+
+    pub fn new(signed: bool, id: u8) -> Self {
+        assert!(id < 32);
+        assert!(id != 0);
+
+        let sign_bit = (signed as u8) << 7;
+
+        return Self(sign_bit | id);
+    }
+
+    pub fn is_signed(self) -> bool {
+        return (self.0 & (1 << 7)) != 0;
+    }
+
+    pub fn id(self) -> Option<u8> {
+        let id = self.0 & 31u8;
+        if id == 0 {
+            return None;
+        }
+
+        return Some(id);
+    }
+
+    pub fn expect_id(self) -> Result<u8, IError> {
+        if let Some(id) = self.id() {
+            return Ok(id);
+        }
+
+        return Err(IError::new("internal error: OutRegister had null ID"));
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct OutRegister(u8);
 
 impl OutRegister {
+    pub fn null(signed: bool, size_class: u8) -> Self {
+        assert!(size_class < 4);
+
+        let sign_bit = (signed as u8) << 7;
+        let size_class = size_class << 5;
+
+        return Self(sign_bit | size_class);
+    }
+
+    pub fn new(signed: bool, size_class: u8, id: u8) -> Self {
+        assert!(id < 32);
+        assert!(size_class < 4);
+        assert!(id != 0);
+
+        let sign_bit = (signed as u8) << 7;
+        let size_class = size_class << 5;
+
+        return Self(sign_bit | size_class | id);
+    }
+
     pub fn is_signed(self) -> bool {
         return (self.0 & (1 << 7)) != 0;
     }
@@ -158,7 +221,7 @@ pub enum Opcode {
     StackAlloc {
         len: u8,
         len_power: u8,
-        register_out: OutRegister,
+        register_out: Out64Register,
     },
     // opcode u8 u16-count
     StackDealloc {
@@ -443,12 +506,6 @@ impl Into<u64> for Ptr {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum AllocKind {
-    Stack,
-    Heap,
-}
-
 // IDK why this is necessary, but before this struct was like 20 bytes, and now
 // its 12. I thought using NonZeroU32 would make it better, but it did not.
 // This is what we're using instead.
@@ -583,10 +640,10 @@ impl AllocTracker {
         return range;
     }
 
-    pub fn alloc_exe(&mut self, alloc_len: u32) -> &mut [u32] {
+    pub fn alloc_exe(&mut self, op_count: u32) -> &mut [u32] {
         use AllocInfo::*;
 
-        let (len, len_power) = compress_alloc_len(alloc_len);
+        let (len, len_power) = compress_alloc_len(op_count * 4);
         let range = self.alloc_range(len, len_power);
 
         let info = StaticExe {
@@ -600,7 +657,12 @@ impl AllocTracker {
         let bytes = &mut self.bytes[range];
         let pointer = bytes.as_mut_ptr() as *mut u32;
 
-        return unsafe { core::slice::from_raw_parts_mut(pointer, range.len() as usize / 4) };
+        debug_assert!(range.len() / 4 >= op_count);
+
+        self.manifest.static_exe_start = range.start;
+        self.manifest.static_exe_end = range.start + op_count * 4;
+
+        return unsafe { core::slice::from_raw_parts_mut(pointer, op_count as usize) };
     }
 
     pub fn alloc_static(&mut self, len: u32, creation_expr: ExprId) -> (Ptr, u32) {

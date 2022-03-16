@@ -10,7 +10,7 @@ pub struct Memory {
     data: AllocTracker,
 
     stack_byte_size: u32,
-    current_frame: StackFrame,
+    pub current_frame: StackFrame,
 
     stack_pointer_map: Pod<u32>,
     stack_frames: Pod<StackFrame>,
@@ -31,12 +31,12 @@ impl core::ops::DerefMut for Memory {
 }
 
 #[derive(Clone, Copy)]
-struct StackFrame {
-    program_counter: u32,
-    map_offset: u32,
+pub struct StackFrame {
+    pub program_counter: u32,
+    pub map_offset: u32,
 
     // register block is always 32 * 8 = 256 bytes long
-    registers_start: u32,
+    pub registers_start: u32,
 }
 
 impl Memory {
