@@ -34,21 +34,26 @@ impl core::ops::DerefMut for Memory {
 struct StackFrame {
     program_counter: u32,
     map_offset: u32,
-    begin: u32,
+
+    // register block is always 32 * 8 = 256 bytes long
+    registers_start: u32,
 }
 
 impl Memory {
-    pub fn new(data: AllocTracker) -> Self {
+    pub fn new(mut data: AllocTracker) -> Self {
         assert_eq!(
             any_as_u8_slice(&1u64),
             &[1u8, 0, 0, 0, 0, 0, 0, 0],
             "must be using little-endian platform"
         );
 
+        // 256 bytes in compressed form
+        let range = data.alloc_range(128, 1);
+
         let current_frame = StackFrame {
-            program_counter: data.manifest.static_exe_begin,
+            program_counter: data.manifest.static_exe_start,
             map_offset: 0,
-            begin: 0,
+            registers_start: range.start,
         };
 
         return Self {
@@ -62,17 +67,45 @@ impl Memory {
         };
     }
 
-    pub fn alloc_stack_var(&mut self, len: u32) -> Result<(), IError> {
-        if self.stack_byte_size.saturating_add(len) > MAX_STACK_SIZE {
+    pub fn write_register(&mut self, id: u8, value: u64) -> Result<(), IError> {
+        if id >= 32 {
+            return Err(IError::new("invalid register value"));
+        }
+
+        let offset = self.current_frame.registers_start + id as u32;
+        let ptr = &mut self.data.bytes[offset] as *mut u8 as *mut u64;
+
+        unsafe { *ptr = value };
+
+        return Ok(());
+    }
+
+    pub fn read_register(&self, id: u8) -> Result<u64, IError> {
+        if id >= 32 {
+            return Err(IError::new("invalid register value"));
+        }
+
+        let offset = self.current_frame.registers_start + id as u32;
+        let ptr = &self.data.bytes[offset] as *const u8 as *const u64;
+
+        return Ok(unsafe { *ptr });
+    }
+
+    pub fn alloc_stack_var(&mut self, len: u8, len_power: u8) -> Result<Ptr, IError> {
+        let lossy_len = decompress_alloc_len(len, len_power);
+        let new_stack_size = self.stack_byte_size.saturating_add(lossy_len);
+        if new_stack_size > MAX_STACK_SIZE {
             return Err(IError::new("stack overflow"));
         }
 
+        self.stack_byte_size = new_stack_size;
+
         let program_counter = self.current_frame.program_counter;
-        let (ptr, len) = self.data.alloc(AllocKind::Stack, len, program_counter);
+        let ptr = self.data.alloc_stack(len, len_power, program_counter);
 
         self.stack_pointer_map.push(ptr.alloc_info_id);
 
-        return Ok(());
+        return Ok(ptr);
     }
 
     pub fn drop_stack_vars(&mut self, count: u32) -> Result<(), IError> {
@@ -99,19 +132,43 @@ impl Memory {
         return Ok(());
     }
 
-    #[inline]
-    pub fn next_op(&mut self) -> Result<(), IError> {
-        return self.jmp(self.current_frame.program_counter + 1);
-    }
+    fn check_pc(&self, new_pc: u32) -> Result<(), IError> {
+        if new_pc / 4 * 4 != new_pc {
+            return Err(IError::new("internal error: program counter was unaligned"));
+        }
 
-    pub fn jmp(&mut self, id: u32) -> Result<(), IError> {
-        // if id >= self.graph.ops.len() as u32 {
-        //     return Err(IError::new("jump target invalid"));
-        // }
+        if new_pc < self.manifest.static_exe_start {
+            return Err(IError::new("internal error: out-of-bounds of executable"));
+        }
 
-        self.current_frame.program_counter = id;
+        if new_pc >= self.manifest.static_exe_end {
+            return Err(IError::new("internal error: out-of-bounds of executable"));
+        }
 
         return Ok(());
+    }
+
+    pub fn jmp(&mut self, new_pc: u32) -> Result<(), IError> {
+        self.check_pc(new_pc)?;
+
+        self.current_frame.program_counter = new_pc;
+
+        return Ok(());
+    }
+
+    pub fn read_op(&self) -> Result<u32, IError> {
+        let pc = self.current_frame.program_counter;
+
+        self.check_pc(pc)?;
+
+        let opcode_pointer = &self.data.bytes[pc] as *const u8 as *const u32;
+        let opcode = unsafe { *opcode_pointer };
+
+        return Ok(opcode);
+    }
+
+    pub fn advance_pc(&mut self) {
+        self.current_frame.program_counter += 4;
     }
 
     pub fn ret(&mut self) -> Result<(), IError> {

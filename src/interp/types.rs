@@ -13,6 +13,87 @@ impl IError {
     }
 }
 
+pub const RET_ID: u8 = 0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct InRegister(u8);
+
+impl InRegister {
+    pub fn size_class(self) -> u8 {
+        return (self.0 & 127) >> 5;
+    }
+
+    pub fn id(self) -> Option<u8> {
+        if (self.0 & (1 << 7)) != 0 {
+            return None;
+        }
+
+        return Some(self.0 & 31u8);
+    }
+
+    pub fn expect_id(self) -> Result<u8, IError> {
+        if let Some(id) = self.id() {
+            return Ok(id);
+        }
+
+        return Err(IError::new("internal error: OutRegister had null ID"));
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct In64Register(u8);
+
+impl In64Register {
+    pub fn id(self) -> Option<u8> {
+        if (self.0 & (1 << 7)) != 0 {
+            return None;
+        }
+
+        return Some(self.0 & 31u8);
+    }
+
+    pub fn expect_id(self) -> Result<u8, IError> {
+        if let Some(id) = self.id() {
+            return Ok(id);
+        }
+
+        return Err(IError::new("internal error: OutRegister had null ID"));
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct OutRegister(u8);
+
+impl OutRegister {
+    pub fn is_signed(self) -> bool {
+        return (self.0 & (1 << 7)) != 0;
+    }
+
+    pub fn size_class(self) -> u8 {
+        return (self.0 & 127) >> 5;
+    }
+
+    pub fn id(self) -> Option<u8> {
+        let id = self.0 & 31u8;
+        if id == 0 {
+            return None;
+        }
+
+        return Some(id);
+    }
+
+    pub fn expect_id(self) -> Result<u8, IError> {
+        if let Some(id) = self.id() {
+            return Ok(id);
+        }
+
+        return Err(IError::new("internal error: OutRegister had null ID"));
+    }
+}
+
 // Invariants:
 //
 // -    Opcodes are always 32-bit aligned; ExprId is stored in parallel array,
@@ -26,30 +107,33 @@ impl IError {
 //
 //      Is this over-optimization? Maybe. But:
 //      1.  Optimizing memory architecture after-the-fact is much harder than
-//          designing it well to begin with
+//          designing it well to start with
 //      2.  This is a for-fun project, so go fuck yourself
 //
 // -    Registers are 64 bit, two's compliment. Register 0 is reserved for
-//      the calling convention.
+//      function calls, and can only be written to by Call and Ret (can be read
+//      by anybody)
 //
 // -    For register-output:
 //      -   Highest bit controls sign extend (set bit -> sign extend)
 //      -   Next 2 bits control size (00 = 8bit, 01 = 16bit, 10 = 32bit, 11 = 64 bit)
 //          writing a 8/16/32 bit value means either zeroing or sign-extending
 //          the high order bytes
-//      -   Next 5 bits decide the register ID, and an ID of 31 means NULL.
+//      -   Next 5 bits decide the register ID
+//      -   register-output cannot be written to by anything except call and ret,
+//          so using RET_ID as the id is invalid
 //
 // -    For register-pointer-input/register-64-input:
 //      -   Input size is always 64 bits
-//      -   Highest bit is dummy
+//      -   Highest bit is set when the register is null
 //      -   Next 2 bits are dummy
-//      -   Next 5 bits decide the register ID, and an ID of 31 means NULL.
+//      -   Next 5 bits decide the register ID
 //
 // -    For register-input:
-//      -   Highest bit is dummy
+//      -   Highest bit is set when the register is null
 //      -   Next 2 bits control size (00 = 8bit, 01 = 16bit, 10 = 32bit, 11 = 64 bit)
 //          always read from lower-order bits when size is less than 64 bits
-//      -   Next 5 bits decide the register ID, and an ID of 31 means NULL.
+//      -   Next 5 bits decide the register ID
 //
 // -    In cases where an opcode accepts a stack-slot and a register-output, if the
 //      register ID is null, the opcode result should be stored in the stack,
@@ -70,10 +154,11 @@ impl IError {
 pub enum Opcode {
     Func, // opcode u8 u16
 
-    // opcode u8-len-power u8-len u8
+    // opcode u8-len-power u8-len u8-register-output
     StackAlloc {
         len: u8,
         len_power: u8,
+        register_out: OutRegister,
     },
     // opcode u8 u16-count
     StackDealloc {
@@ -346,6 +431,18 @@ pub struct Ptr {
     pub alloc_info_id: u32,
 }
 
+impl From<u64> for Ptr {
+    fn from(value: u64) -> Ptr {
+        return unsafe { core::mem::transmute(value) };
+    }
+}
+
+impl Into<u64> for Ptr {
+    fn into(self) -> u64 {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum AllocKind {
     Stack,
@@ -360,7 +457,7 @@ pub enum AllocKind {
 pub enum AllocInfo {
     StackLive {
         creation_op: u32,
-        begin: u32,
+        start: u32,
         len: u8,
         len_power: u8,
     },
@@ -370,7 +467,7 @@ pub enum AllocInfo {
 
     HeapLive {
         creation_op: u32,
-        begin: u32,
+        start: u32,
         len: u8,
         len_power: u8,
     },
@@ -381,14 +478,14 @@ pub enum AllocInfo {
 
     // Executable, not read or writable
     StaticExe {
-        begin: u32,
+        start: u32,
         len: u8,
         len_power: u8,
     },
 
     Static {
         creation_expr: ExprId,
-        begin: u32,
+        start: u32,
         len: u8,
         len_power: u8,
     },
@@ -399,12 +496,12 @@ impl AllocInfo {
         use AllocInfo::*;
 
         #[rustfmt::skip]
-        let (begin, len, len_power) = match self {
-            StackLive { begin, len, len_power, .. }
-            | HeapLive { begin, len, len_power, .. }
-            | StaticExe { begin, len, len_power, }
-            | Static { begin, len, len_power, .. } => {
-                (begin, len, len_power)
+        let (start, len, len_power) = match self {
+            StackLive { start, len, len_power, .. }
+            | HeapLive { start, len, len_power, .. }
+            | StaticExe { start, len, len_power, }
+            | Static { start, len, len_power, .. } => {
+                (start, len, len_power)
             }
 
             StackDead { creation_op, } => {
@@ -418,7 +515,7 @@ impl AllocInfo {
 
         let len = decompress_alloc_len(len, len_power);
 
-        return Ok((begin, len));
+        return Ok((start, len));
     }
 }
 
@@ -426,7 +523,7 @@ impl AllocInfo {
 pub struct BinaryManifest {
     // bounds of static exe allocation, use these to calculate program counter
     // and do bounds checking
-    pub static_exe_begin: u32,
+    pub static_exe_start: u32,
     pub static_exe_end: u32,
 }
 
@@ -434,7 +531,7 @@ pub struct BinaryManifest {
 pub struct AllocTracker {
     // eventually, this should be garbage-collected; probably should just
     // be a custom GC, don't try to make something generic
-    bytes: Pod<u8>,
+    pub bytes: Pod<u8>,
     pub alloc_info: Pod<AllocInfo>,
     pub manifest: BinaryManifest,
 }
@@ -447,22 +544,14 @@ impl AllocTracker {
             bytes: Pod::new(),
             alloc_info: Pod::new(),
             manifest: BinaryManifest {
-                static_exe_begin: 0,
+                static_exe_start: 0,
                 static_exe_end: 0,
             },
         }
     }
 
-    pub fn read_raw_op_bytes(&self, byte_index: u32) -> [u8; 4] {
-        let mut bytes = [0u8; 4];
-
-        bytes.copy_from_slice(&self.bytes[byte_index..(byte_index + 4)]);
-
-        return bytes;
-    }
-
     #[inline]
-    pub fn get_op_data(&self, index: u32) -> u32 {
+    pub fn read_op_at_index(&self, index: u32) -> u32 {
         let pointer = &self.bytes[index] as *const u8;
 
         let offset = pointer.align_offset(4);
@@ -471,20 +560,19 @@ impl AllocTracker {
         return unsafe { *(pointer as *const u32) };
     }
 
-    fn alloc_range(&mut self, len: u32) -> (CopyRange<u32>, u8, u8) {
-        // align the allocation to 8 bytes
-        let len = (len - 1) / 8 * 8 + 8;
-        let begin = self.bytes.len() as u32;
+    // NOTE all alocations are aligned to 8 bytes
+    pub fn alloc_range(&mut self, len: u8, len_power: u8) -> CopyRange<u32> {
+        let start = self.bytes.len() as u32;
 
-        let (len, len_power) = compress_alloc_len(len);
         let lossy_len = decompress_alloc_len(len, len_power);
+        let lossy_len = (lossy_len - 1) / 8 * 8 + 8;
         self.bytes.reserve(lossy_len as usize);
 
         for _ in 0..lossy_len {
             self.bytes.push(0);
         }
 
-        let range = r(begin, begin + lossy_len);
+        let range = r(start, start + lossy_len);
 
         #[cfg(debug_assertions)]
         {
@@ -492,16 +580,17 @@ impl AllocTracker {
             assert_eq!(ptr.align_offset(8), 0);
         }
 
-        return (range, len, len_power);
+        return range;
     }
 
     pub fn alloc_exe(&mut self, alloc_len: u32) -> &mut [u32] {
         use AllocInfo::*;
 
-        let (range, len, len_power) = self.alloc_range(alloc_len);
+        let (len, len_power) = compress_alloc_len(alloc_len);
+        let range = self.alloc_range(len, len_power);
 
         let info = StaticExe {
-            begin: range.start,
+            start: range.start,
             len,
             len_power,
         };
@@ -517,11 +606,12 @@ impl AllocTracker {
     pub fn alloc_static(&mut self, len: u32, creation_expr: ExprId) -> (Ptr, u32) {
         use AllocInfo::*;
 
-        let (range, len, len_power) = self.alloc_range(len);
-        let begin = range.start;
+        let (len, len_power) = compress_alloc_len(len);
+        let range = self.alloc_range(len, len_power);
+        let start = range.start;
 
         let info = StaticExe {
-            begin: range.start,
+            start: range.start,
             len,
             len_power,
         };
@@ -537,26 +627,18 @@ impl AllocTracker {
         return (ptr, range.len());
     }
 
-    pub fn alloc(&mut self, kind: AllocKind, len: u32, creation_op: u32) -> (Ptr, u32) {
+    pub fn alloc(&mut self, len: u32, creation_op: u32) -> (Ptr, u32) {
         use AllocInfo::*;
-        use AllocKind::*;
 
-        let (range, len, len_power) = self.alloc_range(len);
-        let begin = range.start;
+        let (len, len_power) = compress_alloc_len(len);
+        let range = self.alloc_range(len, len_power);
+        let start = range.start;
 
-        let info = match kind {
-            Stack => StackLive {
-                creation_op,
-                begin,
-                len,
-                len_power,
-            },
-            Heap => HeapLive {
-                creation_op,
-                begin,
-                len,
-                len_power,
-            },
+        let info = HeapLive {
+            creation_op,
+            start,
+            len,
+            len_power,
         };
 
         self.alloc_info.push(info);
@@ -571,6 +653,31 @@ impl AllocTracker {
         return (ptr, range.len());
     }
 
+    pub fn alloc_stack(&mut self, len: u8, len_power: u8, creation_op: u32) -> Ptr {
+        use AllocInfo::*;
+
+        let range = self.alloc_range(len, len_power);
+        let start = range.start;
+
+        let info = StackLive {
+            creation_op,
+            start,
+            len,
+            len_power,
+        };
+
+        self.alloc_info.push(info);
+
+        let alloc_info_id = self.alloc_info.len() as u32;
+
+        let ptr = Ptr {
+            offset: 0,
+            alloc_info_id,
+        };
+
+        return ptr;
+    }
+
     pub fn dealloc_stack(&mut self, ptr: Ptr) -> Result<u32, IError> {
         use AllocInfo::*;
 
@@ -578,7 +685,7 @@ impl AllocTracker {
         match *alloc_info {
             StackLive {
                 creation_op,
-                begin,
+                start,
                 len,
                 len_power,
             } => {
@@ -600,7 +707,7 @@ impl AllocTracker {
         match *alloc_info {
             HeapLive {
                 creation_op,
-                begin,
+                start,
                 len,
                 len_power,
             } => {
@@ -707,7 +814,7 @@ impl AllocTracker {
     pub fn get_range(&self, ptr: Ptr, len: u32) -> Result<CopyRange<u32>, IError> {
         let alloc_info = self.get_alloc_info(ptr)?;
 
-        let (begin, alloc_len) = alloc_info.get_range()?;
+        let (start, alloc_len) = alloc_info.get_range()?;
 
         let ptr_end = ptr.offset + len;
         if ptr_end > alloc_len {
@@ -824,7 +931,7 @@ mod tests {
     fn test_alloc_alignment() {
         let mut data = AllocTracker::new();
         for i in 0..100 {
-            data.alloc_range(13);
+            data.alloc_range(13, 0);
         }
     }
 

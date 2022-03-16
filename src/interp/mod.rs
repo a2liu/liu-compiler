@@ -23,5 +23,33 @@ impl<'a> Interpreter<'a> {
         };
     }
 
-    pub fn run(&mut self) {}
+    pub fn run(&mut self) -> Result<(), IError> {
+        use Opcode::*;
+
+        let opcode: Opcode = self.memory.read_op()?.into();
+
+        loop {
+            match opcode {
+                StackAlloc {
+                    len,
+                    len_power,
+                    register_out,
+                } => {
+                    let ptr = self.memory.alloc_stack_var(len, len_power)?;
+
+                    if let Some(id) = register_out.id() {
+                        self.memory.write_register(id, ptr.into())?;
+                    }
+
+                    self.memory.advance_pc();
+                }
+
+                _ => {
+                    break;
+                }
+            }
+        }
+
+        return Ok(());
+    }
 }
