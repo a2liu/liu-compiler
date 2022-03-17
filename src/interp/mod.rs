@@ -30,15 +30,11 @@ impl<'a> Interpreter<'a> {
             let opcode: Opcode = self.memory.read_op()?.into();
 
             match opcode {
-                StackAlloc {
-                    len,
-                    len_power,
-                    register_out,
-                } => {
-                    let ptr = self.memory.alloc_stack_var(len, len_power)?;
+                StackAlloc { len, register_out } => {
+                    let ptr = self.memory.alloc_stack_var(len)?;
 
                     if let Some(id) = register_out.id() {
-                        self.memory.write_register(id, ptr.into())?;
+                        self.memory.write_register(id, ptr)?;
                     }
 
                     self.memory.advance_pc();
@@ -46,6 +42,79 @@ impl<'a> Interpreter<'a> {
 
                 StackDealloc { count } => {
                     self.memory.drop_stack_vars(count as u32)?;
+
+                    self.memory.advance_pc();
+                }
+
+                Make64 {
+                    register_out,
+                    stack_slot,
+                } => {
+                    self.memory.advance_pc();
+
+                    let high_order = self.memory.read_op()? as u64;
+                    self.memory.advance_pc();
+
+                    let low_order = self.memory.read_op()? as u64;
+
+                    let value = (high_order << 32) | low_order;
+
+                    if let Some(id) = register_out.id() {
+                        self.memory.write_register(id, value)?;
+                    } else {
+                        let ptr = self.memory.stack_slot_ptr(stack_slot)?;
+                        *self.memory.ptr_mut(ptr)? = value;
+                    }
+
+                    self.memory.advance_pc();
+                }
+
+                MakeFp {
+                    register_out,
+                    stack_id,
+                } => {
+                    let ptr = self.memory.stack_ptr(stack_id as u32, 0)?;
+
+                    let id = register_out.expect_id()?;
+                    self.memory.write_register(id, ptr)?;
+
+                    self.memory.advance_pc();
+                }
+
+                Add {
+                    register_out,
+                    register_in_left,
+                    register_in_right,
+                } => {
+                    let out = register_out.expect_id()?;
+                    let sign_extend = register_out.is_signed();
+                    let left = register_in_left.expect_id()?;
+                    let right = register_in_right.expect_id()?;
+
+                    let out_size = register_out.size_class();
+                    let left_size = register_in_left.size_class();
+                    let right_size = register_in_right.size_class();
+
+                    let left = self.memory.read_register(left)?;
+                    let right = self.memory.read_register(right)?;
+
+                    let result = if sign_extend {
+                        let left = sign_extend_and_truncate(left_size, left);
+                        let right = sign_extend_and_truncate(right_size, right);
+
+                        let result = (left.wrapping_add(right)) as u64;
+
+                        sign_extend_and_truncate(out_size, result) as u64
+                    } else {
+                        let left = truncate(left_size, left);
+                        let right = truncate(right_size, right);
+
+                        let result = left.wrapping_add(right);
+
+                        truncate(out_size, result)
+                    };
+
+                    self.memory.write_register(out, result)?;
 
                     self.memory.advance_pc();
                 }
@@ -73,12 +142,22 @@ mod tests {
 
         ops.push(
             StackAlloc {
-                len: 1,
-                len_power: 3,
+                len: AllocLen::new(8),
                 register_out: Out64Register::new(false, 2),
             }
             .into(),
         );
+
+        ops.push(
+            Make64 {
+                register_out: Out64Register::null(false),
+                stack_slot: StackSlot { id: 0, offset: 0 },
+            }
+            .into(),
+        );
+
+        ops.push(0);
+        ops.push(1);
 
         ops.push(StackDealloc { count: 1 }.into());
 

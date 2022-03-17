@@ -48,7 +48,7 @@ impl Memory {
         );
 
         // 256 bytes in compressed form
-        let range = data.alloc_range(128, 1);
+        let range = data.alloc_range(AllocLen::new(256));
 
         let current_frame = StackFrame {
             program_counter: data.manifest.static_exe_start,
@@ -67,7 +67,12 @@ impl Memory {
         };
     }
 
-    pub fn write_register(&mut self, id: u8, value: u64) -> Result<(), IError> {
+    #[inline]
+    pub fn write_register(&mut self, id: u8, value: impl Into<u64>) -> Result<(), IError> {
+        return self._write_register(id, value.into());
+    }
+
+    fn _write_register(&mut self, id: u8, value: u64) -> Result<(), IError> {
         if id >= 32 {
             return Err(IError::new("invalid register value"));
         }
@@ -91,8 +96,8 @@ impl Memory {
         return Ok(unsafe { *ptr });
     }
 
-    pub fn alloc_stack_var(&mut self, len: u8, len_power: u8) -> Result<Ptr, IError> {
-        let lossy_len = decompress_alloc_len(len, len_power);
+    pub fn alloc_stack_var(&mut self, len: AllocLen) -> Result<Ptr, IError> {
+        let lossy_len = len.len();
         let new_stack_size = self.stack_byte_size.saturating_add(lossy_len);
         if new_stack_size > MAX_STACK_SIZE {
             return Err(IError::new("stack overflow"));
@@ -101,7 +106,7 @@ impl Memory {
         self.stack_byte_size = new_stack_size;
 
         let program_counter = self.current_frame.program_counter;
-        let ptr = self.data.alloc_stack(len, len_power, program_counter);
+        let ptr = self.data.alloc_stack(len, program_counter);
 
         self.stack_pointer_map.push(ptr.alloc_info_id);
 
@@ -214,6 +219,11 @@ impl Memory {
             alloc_info_id,
             offset,
         });
+    }
+
+    #[inline]
+    pub fn stack_slot_ptr(&self, slot: StackSlot) -> Result<Ptr, IError> {
+        return self.stack_ptr(slot.id as u32, slot.offset as u32);
     }
 }
 

@@ -14,6 +14,22 @@ impl IError {
     }
 }
 
+pub fn sign_extend_and_truncate(size_class: u8, value: u64) -> i64 {
+    let value_size = 1 << size_class;
+    let shift_size = (8 - value_size) * 8;
+    let truncated_value = value << shift_size;
+
+    return (truncated_value as i64) >> shift_size;
+}
+
+pub fn truncate(size_class: u8, value: u64) -> u64 {
+    let value_size = 1 << size_class;
+    let shift_size = (8 - value_size) * 8;
+    let truncated_value = value << shift_size;
+
+    return truncated_value >> shift_size;
+}
+
 pub const REGISTER_CALL_ID: u8 = 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -157,6 +173,53 @@ impl OutRegister {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StackSlot {
+    pub id: u8,
+    pub offset: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AllocLen {
+    pub len: u8,
+    pub power: u8,
+}
+
+impl AllocLen {
+    pub fn new(input_len: u32) -> Self {
+        let leading_zeros = input_len.leading_zeros() as u8;
+
+        let power = (32 - leading_zeros).saturating_sub(8);
+
+        if power as u32 <= input_len.trailing_zeros() {
+            let len = (input_len >> power) as u8;
+
+            let lossy = (len as u32) << power;
+            debug_assert_eq!(lossy, input_len);
+
+            return Self { len, power };
+        }
+
+        // we need to round up here, because this compression is used for allocation
+        // lengths, where the output length must always be larger than the input length
+        let rounded_input_len = (1u32 << power) + input_len;
+        let leading_zeros = rounded_input_len.leading_zeros() as u8;
+        let power = (32 - leading_zeros).saturating_sub(8);
+        let len = (rounded_input_len >> power) as u8;
+
+        let lossy = (len as u32) << power;
+        debug_assert!(lossy >= input_len);
+
+        return Self { len, power };
+    }
+
+    pub fn len(self) -> u32 {
+        let len = (self.len as u32) << self.power;
+
+        return len;
+    }
+}
+
 // Invariants:
 //
 // -    Opcodes are always 32-bit aligned; ExprId is stored in parallel array,
@@ -205,7 +268,7 @@ impl OutRegister {
 //
 // -    For stack-slot:
 //      -   First byte is the stack id
-//      -   First byte is the offset into that id
+//      -   second byte is the offset into that id
 //
 // -    stack-id is a stack id
 //
@@ -219,8 +282,7 @@ pub enum Opcode {
 
     // opcode u8-len-power u8-len u8-register-output
     StackAlloc {
-        len: u8,
-        len_power: u8,
+        len: AllocLen,
         register_out: Out64Register,
     },
     // opcode u8 u16-count
@@ -240,6 +302,7 @@ pub enum Opcode {
     // opcode u8-register-output u16-value
     Make16 {
         register_out: u8,
+        value: u16,
     },
     // opcode u8-register-output u16-stack-slot u32-value
     Make32 {
@@ -248,12 +311,12 @@ pub enum Opcode {
     },
     // opcode u8-register-output u16-stack-slot u32-value-high-order-bits u32-low-order-bits
     Make64 {
-        register_out: u8,
-        stack_slot: u16,
+        register_out: Out64Register,
+        stack_slot: StackSlot,
     },
     // opcode u8-register-output u16-stack-id
     MakeFp {
-        register_out: u8,
+        register_out: OutRegister,
         stack_id: u16,
     },
 
@@ -295,9 +358,9 @@ pub enum Opcode {
     // into 64 bits and also the operation signed-ness
     // opcode u8-register-output u8-register-input u8-register-input
     Add {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutRegister,
+        register_in_left: InRegister,
+        register_in_right: InRegister,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     Sub {
@@ -515,8 +578,7 @@ pub enum AllocInfo {
     StackLive {
         creation_op: u32,
         start: u32,
-        len: u8,
-        len_power: u8,
+        len: AllocLen,
     },
     StackDead {
         creation_op: u32,
@@ -525,8 +587,7 @@ pub enum AllocInfo {
     HeapLive {
         creation_op: u32,
         start: u32,
-        len: u8,
-        len_power: u8,
+        len: AllocLen,
     },
     HeapDead {
         creation_op: u32,
@@ -536,15 +597,13 @@ pub enum AllocInfo {
     // Executable, not read or writable
     StaticExe {
         start: u32,
-        len: u8,
-        len_power: u8,
+        len: AllocLen,
     },
 
     Static {
         creation_expr: ExprId,
         start: u32,
-        len: u8,
-        len_power: u8,
+        len: AllocLen,
     },
 }
 
@@ -553,12 +612,12 @@ impl AllocInfo {
         use AllocInfo::*;
 
         #[rustfmt::skip]
-        let (start, len, len_power) = match self {
-            StackLive { start, len, len_power, .. }
-            | HeapLive { start, len, len_power, .. }
-            | StaticExe { start, len, len_power, }
-            | Static { start, len, len_power, .. } => {
-                (start, len, len_power)
+        let (start, len) = match self {
+            StackLive { start, len, .. }
+            | HeapLive { start, len, .. }
+            | StaticExe { start, len, }
+            | Static { start, len, .. } => {
+                (start, len.len())
             }
 
             StackDead { creation_op, } => {
@@ -569,8 +628,6 @@ impl AllocInfo {
                 return Err(IError::new("stackdead"));
             }
         };
-
-        let len = decompress_alloc_len(len, len_power);
 
         return Ok((start, len));
     }
@@ -618,10 +675,10 @@ impl AllocTracker {
     }
 
     // NOTE all alocations are aligned to 8 bytes
-    pub fn alloc_range(&mut self, len: u8, len_power: u8) -> CopyRange<u32> {
+    pub fn alloc_range(&mut self, len: AllocLen) -> CopyRange<u32> {
         let start = self.bytes.len() as u32;
 
-        let lossy_len = decompress_alloc_len(len, len_power);
+        let lossy_len = len.len();
         let lossy_len = (lossy_len - 1) / 8 * 8 + 8;
         self.bytes.reserve(lossy_len as usize);
 
@@ -643,13 +700,12 @@ impl AllocTracker {
     pub fn alloc_exe(&mut self, op_count: u32) -> &mut [u32] {
         use AllocInfo::*;
 
-        let (len, len_power) = compress_alloc_len(op_count * 4);
-        let range = self.alloc_range(len, len_power);
+        let len = AllocLen::new(op_count * 4);
+        let range = self.alloc_range(len);
 
         let info = StaticExe {
             start: range.start,
             len,
-            len_power,
         };
 
         self.alloc_info.push(info);
@@ -668,14 +724,13 @@ impl AllocTracker {
     pub fn alloc_static(&mut self, len: u32, creation_expr: ExprId) -> (Ptr, u32) {
         use AllocInfo::*;
 
-        let (len, len_power) = compress_alloc_len(len);
-        let range = self.alloc_range(len, len_power);
+        let alloc_len = AllocLen::new(len);
+        let range = self.alloc_range(alloc_len);
         let start = range.start;
 
         let info = StaticExe {
             start: range.start,
-            len,
-            len_power,
+            len: alloc_len,
         };
 
         self.alloc_info.push(info);
@@ -692,15 +747,14 @@ impl AllocTracker {
     pub fn alloc(&mut self, len: u32, creation_op: u32) -> (Ptr, u32) {
         use AllocInfo::*;
 
-        let (len, len_power) = compress_alloc_len(len);
-        let range = self.alloc_range(len, len_power);
+        let alloc_len = AllocLen::new(len);
+        let range = self.alloc_range(alloc_len);
         let start = range.start;
 
         let info = HeapLive {
             creation_op,
             start,
-            len,
-            len_power,
+            len: alloc_len,
         };
 
         self.alloc_info.push(info);
@@ -715,17 +769,16 @@ impl AllocTracker {
         return (ptr, range.len());
     }
 
-    pub fn alloc_stack(&mut self, len: u8, len_power: u8, creation_op: u32) -> Ptr {
+    pub fn alloc_stack(&mut self, len: AllocLen, creation_op: u32) -> Ptr {
         use AllocInfo::*;
 
-        let range = self.alloc_range(len, len_power);
+        let range = self.alloc_range(len);
         let start = range.start;
 
         let info = StackLive {
             creation_op,
             start,
             len,
-            len_power,
         };
 
         self.alloc_info.push(info);
@@ -749,13 +802,10 @@ impl AllocTracker {
                 creation_op,
                 start,
                 len,
-                len_power,
             } => {
-                let len = decompress_alloc_len(len, len_power);
-
                 *alloc_info = StackDead { creation_op };
 
-                return Ok(len);
+                return Ok(len.len());
             }
 
             _ => return Err(IError::new("internal error")),
@@ -771,16 +821,13 @@ impl AllocTracker {
                 creation_op,
                 start,
                 len,
-                len_power,
             } => {
-                let len = decompress_alloc_len(len, len_power);
-
                 *alloc_info = HeapDead {
                     creation_op,
                     dealloc_op,
                 };
 
-                return Ok(len);
+                return Ok(len.len());
             }
 
             HeapDead {
@@ -887,41 +934,6 @@ impl AllocTracker {
     }
 }
 
-#[inline]
-pub fn decompress_alloc_len(len: u8, len_power: u8) -> u32 {
-    let len = (len as u32) << len_power;
-
-    return len;
-}
-
-#[inline]
-pub fn compress_alloc_len(input_len: u32) -> (u8, u8) {
-    let leading_zeros = input_len.leading_zeros() as u8;
-
-    let len_power = (32 - leading_zeros).saturating_sub(8);
-
-    if len_power as u32 <= input_len.trailing_zeros() {
-        let len = (input_len >> len_power) as u8;
-
-        let lossy = (len as u32) << len_power;
-        debug_assert_eq!(lossy, input_len);
-
-        return (len, len_power);
-    }
-
-    // we need to round up here, because this compression is used for allocation
-    // lengths, where the output length must always be larger than the input length
-    let rounded_input_len = (1u32 << len_power) + input_len;
-    let leading_zeros = rounded_input_len.leading_zeros() as u8;
-    let len_power = (32 - leading_zeros).saturating_sub(8);
-    let len = (rounded_input_len >> len_power) as u8;
-
-    let lossy = (len as u32) << len_power;
-    debug_assert!(lossy >= input_len);
-
-    return (len, len_power);
-}
-
 pub unsafe fn any_as_u8_slice_mut<T: Sized + Copy>(p: &mut T) -> &mut [u8] {
     core::slice::from_raw_parts_mut(p as *mut T as *mut u8, mem::size_of::<T>())
 }
@@ -957,11 +969,9 @@ mod tests {
         ];
 
         for &input_len in tests {
-            let (compress_len, len_power) = compress_alloc_len(input_len);
+            let compressed = AllocLen::new(input_len);
 
-            let output_len = decompress_alloc_len(compress_len, len_power);
-
-            assert_eq!(input_len, output_len);
+            assert_eq!(input_len, compressed.len());
         }
     }
 
@@ -980,11 +990,10 @@ mod tests {
 
         let mut i = 0;
         for &(input_len, expected_len) in tests {
-            let (compress_len, len_power) = compress_alloc_len(input_len);
+            let compressed = AllocLen::new(input_len);
 
-            let output_len = decompress_alloc_len(compress_len, len_power);
+            assert_eq!(expected_len, compressed.len(), "index: {}", i);
 
-            assert_eq!(expected_len, output_len, "index: {}", i);
             i += 1;
         }
     }
@@ -993,7 +1002,7 @@ mod tests {
     fn test_alloc_alignment() {
         let mut data = AllocTracker::new();
         for i in 0..100 {
-            data.alloc_range(13, 0);
+            data.alloc_range(AllocLen::new(13));
         }
     }
 
