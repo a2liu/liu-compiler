@@ -143,21 +143,68 @@ mod tests {
         ops.push(
             StackAlloc {
                 len: AllocLen::new(8),
-                register_out: Out64Register::new(false, 2),
+                register_out: Out64Register::new(1),
             }
             .into(),
         );
 
         ops.push(
             Make64 {
-                register_out: Out64Register::null(false),
+                register_out: Out64Register::new(2),
                 stack_slot: StackSlot { id: 0, offset: 0 },
             }
             .into(),
         );
 
         ops.push(0);
-        ops.push(1);
+        ops.push(65536);
+
+        ops.push(
+            Make64 {
+                register_out: Out64Register::new(3),
+                stack_slot: StackSlot { id: 0, offset: 0 },
+            }
+            .into(),
+        );
+
+        ops.push(0);
+        ops.push(13);
+
+        ops.push(
+            Add {
+                register_out: OutRegister::new(false, 3, 4),
+                register_in_left: InRegister::new(1, 2),
+                register_in_right: InRegister::new(1, 3),
+            }
+            .into(),
+        );
+
+        ops.push(
+            Add {
+                register_out: OutRegister::new(false, 1, 5),
+                register_in_left: InRegister::new(1, 2),
+                register_in_right: InRegister::new(1, 3),
+            }
+            .into(),
+        );
+
+        ops.push(
+            Add {
+                register_out: OutRegister::new(false, 3, 6),
+                register_in_left: InRegister::new(1, 2),
+                register_in_right: InRegister::new(1, 3),
+            }
+            .into(),
+        );
+
+        ops.push(
+            Add {
+                register_out: OutRegister::new(false, 3, 7),
+                register_in_left: InRegister::new(3, 2),
+                register_in_right: InRegister::new(3, 3),
+            }
+            .into(),
+        );
 
         ops.push(StackDealloc { count: 1 }.into());
 
@@ -177,6 +224,13 @@ mod tests {
         let mut interp = Interpreter::new(data, &mut out);
 
         let result = interp.run();
+
+        assert_eq!(interp.memory.read_register(2).unwrap(), 65536);
+        assert_eq!(interp.memory.read_register(3).unwrap(), 13);
+        assert_eq!(interp.memory.read_register(4).unwrap(), 13);
+        assert_eq!(interp.memory.read_register(5).unwrap(), 13);
+        assert_eq!(interp.memory.read_register(6).unwrap(), 13);
+        assert_eq!(interp.memory.read_register(7).unwrap(), 65536 + 13);
 
         match result {
             Ok(_) => {}

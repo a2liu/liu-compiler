@@ -37,6 +37,15 @@ pub const REGISTER_CALL_ID: u8 = 0;
 pub struct InRegister(u8);
 
 impl InRegister {
+    pub fn new(size_class: u8, id: u8) -> Self {
+        assert!(id < 32);
+        assert!(size_class < 4);
+
+        let size_class = size_class << 5;
+
+        return Self(size_class | id);
+    }
+
     pub fn size_class(self) -> u8 {
         return (self.0 & 127) >> 5;
     }
@@ -85,23 +94,15 @@ impl In64Register {
 pub struct Out64Register(u8);
 
 impl Out64Register {
-    pub fn null(signed: bool) -> Self {
-        let sign_bit = (signed as u8) << 7;
-
-        return Self(sign_bit);
+    pub fn null() -> Self {
+        return Self(0);
     }
 
-    pub fn new(signed: bool, id: u8) -> Self {
+    pub fn new(id: u8) -> Self {
         assert!(id < 32);
         assert!(id != 0);
 
-        let sign_bit = (signed as u8) << 7;
-
-        return Self(sign_bit | id);
-    }
-
-    pub fn is_signed(self) -> bool {
-        return (self.0 & (1 << 7)) != 0;
+        return Self(id);
     }
 
     pub fn id(self) -> Option<u8> {

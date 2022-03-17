@@ -77,7 +77,7 @@ impl Memory {
             return Err(IError::new("invalid register value"));
         }
 
-        let offset = self.current_frame.registers_start + id as u32;
+        let offset = self.current_frame.registers_start + (id as u32) * 8;
         let ptr = &mut self.data.bytes[offset] as *mut u8 as *mut u64;
 
         unsafe { *ptr = value };
@@ -90,7 +90,7 @@ impl Memory {
             return Err(IError::new("invalid register value"));
         }
 
-        let offset = self.current_frame.registers_start + id as u32;
+        let offset = self.current_frame.registers_start + (id as u32) * 8;
         let ptr = &self.data.bytes[offset] as *const u8 as *const u64;
 
         return Ok(unsafe { *ptr });
