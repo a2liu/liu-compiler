@@ -140,6 +140,9 @@ mod tests {
 
         let mut ops: Pod<u32> = Pod::new();
 
+        let value_2_16: u64 = 65536;
+        let value_2_15: u64 = 32768;
+
         ops.push(
             StackAlloc {
                 len: AllocLen::new(8),
@@ -157,7 +160,7 @@ mod tests {
         );
 
         ops.push(0);
-        ops.push(65536);
+        ops.push(value_2_16 as u32);
 
         ops.push(
             Make64 {
@@ -168,7 +171,7 @@ mod tests {
         );
 
         ops.push(0);
-        ops.push(13);
+        ops.push(value_2_15 as u32);
 
         ops.push(
             Add {
@@ -206,6 +209,15 @@ mod tests {
             .into(),
         );
 
+        ops.push(
+            Add {
+                register_out: OutRegister::new(true, 1, 8),
+                register_in_left: InRegister::new(3, 2),
+                register_in_right: InRegister::new(3, 3),
+            }
+            .into(),
+        );
+
         ops.push(StackDealloc { count: 1 }.into());
 
         ops.push(
@@ -225,12 +237,19 @@ mod tests {
 
         let result = interp.run();
 
-        assert_eq!(interp.memory.read_register(2).unwrap(), 65536);
-        assert_eq!(interp.memory.read_register(3).unwrap(), 13);
-        assert_eq!(interp.memory.read_register(4).unwrap(), 13);
-        assert_eq!(interp.memory.read_register(5).unwrap(), 13);
-        assert_eq!(interp.memory.read_register(6).unwrap(), 13);
-        assert_eq!(interp.memory.read_register(7).unwrap(), 65536 + 13);
+        assert_eq!(interp.memory.read_register(2).unwrap(), value_2_16);
+        assert_eq!(interp.memory.read_register(3).unwrap(), value_2_15);
+        assert_eq!(interp.memory.read_register(4).unwrap(), value_2_15);
+        assert_eq!(interp.memory.read_register(5).unwrap(), value_2_15);
+        assert_eq!(interp.memory.read_register(6).unwrap(), value_2_15);
+        assert_eq!(
+            interp.memory.read_register(7).unwrap(),
+            value_2_16 + value_2_15
+        );
+        assert_eq!(
+            interp.memory.read_register(8).unwrap(),
+            value_2_15 as i16 as i64 as u64
+        );
 
         match result {
             Ok(_) => {}
