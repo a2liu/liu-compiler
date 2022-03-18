@@ -30,13 +30,33 @@ pub fn truncate(size_class: u8, value: u64) -> u64 {
     return truncated_value >> shift_size;
 }
 
+pub trait Register: Sized + Copy {
+    fn id(self) -> Option<u8>;
+
+    fn size_class(self) -> u8 {
+        return 3;
+    }
+
+    fn is_signed(self) -> bool {
+        return false;
+    }
+
+    fn expect_id(self) -> Result<u8, IError> {
+        if let Some(id) = self.id() {
+            return Ok(id);
+        }
+
+        return Err(IError::new("internal error: Register had null ID"));
+    }
+}
+
 pub const REGISTER_CALL_ID: u8 = 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct InRegister(u8);
+pub struct InReg(u8);
 
-impl InRegister {
+impl InReg {
     pub fn new(size_class: u8, id: u8) -> Self {
         assert!(id < 32);
         assert!(size_class < 4);
@@ -45,55 +65,41 @@ impl InRegister {
 
         return Self(size_class | id);
     }
+}
 
-    pub fn size_class(self) -> u8 {
+impl Register for InReg {
+    fn size_class(self) -> u8 {
         return (self.0 & 127) >> 5;
     }
 
-    pub fn id(self) -> Option<u8> {
+    fn id(self) -> Option<u8> {
         if (self.0 & (1 << 7)) != 0 {
             return None;
         }
 
         return Some(self.0 & 31u8);
     }
-
-    pub fn expect_id(self) -> Result<u8, IError> {
-        if let Some(id) = self.id() {
-            return Ok(id);
-        }
-
-        return Err(IError::new("internal error: OutRegister had null ID"));
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct In64Register(u8);
+pub struct In64Reg(u8);
 
-impl In64Register {
-    pub fn id(self) -> Option<u8> {
+impl Register for In64Reg {
+    fn id(self) -> Option<u8> {
         if (self.0 & (1 << 7)) != 0 {
             return None;
         }
 
         return Some(self.0 & 31u8);
     }
-
-    pub fn expect_id(self) -> Result<u8, IError> {
-        if let Some(id) = self.id() {
-            return Ok(id);
-        }
-
-        return Err(IError::new("internal error: OutRegister had null ID"));
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct Out64Register(u8);
+pub struct Out64Reg(u8);
 
-impl Out64Register {
+impl Out64Reg {
     pub fn null() -> Self {
         return Self(0);
     }
@@ -104,8 +110,10 @@ impl Out64Register {
 
         return Self(id);
     }
+}
 
-    pub fn id(self) -> Option<u8> {
+impl Register for Out64Reg {
+    fn id(self) -> Option<u8> {
         let id = self.0 & 31u8;
         if id == 0 {
             return None;
@@ -113,21 +121,13 @@ impl Out64Register {
 
         return Some(id);
     }
-
-    pub fn expect_id(self) -> Result<u8, IError> {
-        if let Some(id) = self.id() {
-            return Ok(id);
-        }
-
-        return Err(IError::new("internal error: OutRegister had null ID"));
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct OutRegister(u8);
+pub struct OutReg(u8);
 
-impl OutRegister {
+impl OutReg {
     pub fn null(signed: bool, size_class: u8) -> Self {
         assert!(size_class < 4);
 
@@ -147,30 +147,24 @@ impl OutRegister {
 
         return Self(sign_bit | size_class | id);
     }
+}
 
-    pub fn is_signed(self) -> bool {
+impl Register for OutReg {
+    fn is_signed(self) -> bool {
         return (self.0 & (1 << 7)) != 0;
     }
 
-    pub fn size_class(self) -> u8 {
+    fn size_class(self) -> u8 {
         return (self.0 & 127) >> 5;
     }
 
-    pub fn id(self) -> Option<u8> {
+    fn id(self) -> Option<u8> {
         let id = self.0 & 31u8;
         if id == 0 {
             return None;
         }
 
         return Some(id);
-    }
-
-    pub fn expect_id(self) -> Result<u8, IError> {
-        if let Some(id) = self.id() {
-            return Ok(id);
-        }
-
-        return Err(IError::new("internal error: OutRegister had null ID"));
     }
 }
 
@@ -284,7 +278,7 @@ pub enum Opcode {
     // opcode u8-len-power u8-len u8-register-output
     StackAlloc {
         len: AllocLen,
-        register_out: Out64Register,
+        register_out: Out64Reg,
     },
     // opcode u8 u16-count
     StackDealloc {
@@ -312,12 +306,12 @@ pub enum Opcode {
     },
     // opcode u8-register-output u16-stack-slot u32-value-high-order-bits u32-low-order-bits
     Make64 {
-        register_out: Out64Register,
+        register_out: Out64Reg,
         stack_slot: StackSlot,
     },
     // opcode u8-register-output u16-stack-id
     MakeFp {
-        register_out: OutRegister,
+        register_out: OutReg,
         stack_id: u16,
     },
 
@@ -359,9 +353,9 @@ pub enum Opcode {
     // into 64 bits and also the operation signed-ness
     // opcode u8-register-output u8-register-input u8-register-input
     Add {
-        register_out: OutRegister,
-        register_in_left: InRegister,
-        register_in_right: InRegister,
+        register_out: OutReg,
+        register_in_left: InReg,
+        register_in_right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     Sub {

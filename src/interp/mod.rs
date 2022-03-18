@@ -146,14 +146,14 @@ mod tests {
         ops.push(
             StackAlloc {
                 len: AllocLen::new(8),
-                register_out: Out64Register::new(1),
+                register_out: Out64Reg::new(1),
             }
             .into(),
         );
 
         ops.push(
             Make64 {
-                register_out: Out64Register::new(2),
+                register_out: Out64Reg::new(2),
                 stack_slot: StackSlot { id: 0, offset: 0 },
             }
             .into(),
@@ -164,7 +164,7 @@ mod tests {
 
         ops.push(
             Make64 {
-                register_out: Out64Register::new(3),
+                register_out: Out64Reg::new(3),
                 stack_slot: StackSlot { id: 0, offset: 0 },
             }
             .into(),
@@ -175,45 +175,45 @@ mod tests {
 
         ops.push(
             Add {
-                register_out: OutRegister::new(false, 3, 4),
-                register_in_left: InRegister::new(1, 2),
-                register_in_right: InRegister::new(1, 3),
+                register_out: OutReg::new(false, 3, 4),
+                register_in_left: InReg::new(1, 2),
+                register_in_right: InReg::new(1, 3),
             }
             .into(),
         );
 
         ops.push(
             Add {
-                register_out: OutRegister::new(false, 1, 5),
-                register_in_left: InRegister::new(1, 2),
-                register_in_right: InRegister::new(1, 3),
+                register_out: OutReg::new(false, 1, 5),
+                register_in_left: InReg::new(1, 2),
+                register_in_right: InReg::new(1, 3),
             }
             .into(),
         );
 
         ops.push(
             Add {
-                register_out: OutRegister::new(false, 3, 6),
-                register_in_left: InRegister::new(1, 2),
-                register_in_right: InRegister::new(1, 3),
+                register_out: OutReg::new(false, 3, 6),
+                register_in_left: InReg::new(1, 2),
+                register_in_right: InReg::new(1, 3),
             }
             .into(),
         );
 
         ops.push(
             Add {
-                register_out: OutRegister::new(false, 3, 7),
-                register_in_left: InRegister::new(3, 2),
-                register_in_right: InRegister::new(3, 3),
+                register_out: OutReg::new(false, 3, 7),
+                register_in_left: InReg::new(3, 2),
+                register_in_right: InReg::new(3, 3),
             }
             .into(),
         );
 
         ops.push(
             Add {
-                register_out: OutRegister::new(true, 1, 8),
-                register_in_left: InRegister::new(3, 2),
-                register_in_right: InRegister::new(3, 3),
+                register_out: OutReg::new(true, 1, 8),
+                register_in_left: InReg::new(3, 2),
+                register_in_right: InReg::new(3, 3),
             }
             .into(),
         );
