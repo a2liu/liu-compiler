@@ -4,9 +4,11 @@ use core::fmt::Write;
 use core::mem;
 use core::num::NonZeroU32;
 
+mod asm;
 mod memory;
 mod types;
 
+pub use asm::*;
 pub use memory::*;
 pub use types::*;
 
@@ -52,10 +54,10 @@ impl<'a> Interpreter<'a> {
                 } => {
                     self.memory.advance_pc();
 
-                    let high_order = self.memory.read_op()? as u64;
+                    let low_order = self.memory.read_op()? as u64;
                     self.memory.advance_pc();
 
-                    let low_order = self.memory.read_op()? as u64;
+                    let high_order = self.memory.read_op()? as u64;
 
                     let value = (high_order << 32) | low_order;
 
@@ -83,37 +85,29 @@ impl<'a> Interpreter<'a> {
 
                 Add {
                     register_out,
-                    register_in_left,
-                    register_in_right,
+                    left,
+                    right,
                 } => {
-                    let out = register_out.expect_id()?;
                     let sign_extend = register_out.is_signed();
-                    let left = register_in_left.expect_id()?;
-                    let right = register_in_right.expect_id()?;
-
                     let out_size = register_out.size_class();
-                    let left_size = register_in_left.size_class();
-                    let right_size = register_in_right.size_class();
-
-                    let left = self.memory.read_register(left)?;
-                    let right = self.memory.read_register(right)?;
 
                     let result = if sign_extend {
-                        let left = sign_extend_and_truncate(left_size, left);
-                        let right = sign_extend_and_truncate(right_size, right);
+                        let left = self.memory.read_signed_reg(left)?;
+                        let right = self.memory.read_signed_reg(right)?;
 
                         let result = (left.wrapping_add(right)) as u64;
 
                         sign_extend_and_truncate(out_size, result) as u64
                     } else {
-                        let left = truncate(left_size, left);
-                        let right = truncate(right_size, right);
+                        let left = self.memory.read_unsigned_reg(left)?;
+                        let right = self.memory.read_unsigned_reg(right)?;
 
                         let result = left.wrapping_add(right);
 
                         truncate(out_size, result)
                     };
 
+                    let out = register_out.expect_id()?;
                     self.memory.write_register(out, result)?;
 
                     self.memory.advance_pc();
@@ -159,8 +153,8 @@ mod tests {
             .into(),
         );
 
-        ops.push(0);
         ops.push(value_2_16 as u32);
+        ops.push(0);
 
         ops.push(
             Make64 {
@@ -170,14 +164,14 @@ mod tests {
             .into(),
         );
 
-        ops.push(0);
         ops.push(value_2_15 as u32);
+        ops.push(0);
 
         ops.push(
             Add {
                 register_out: OutReg::new(false, 3, 4),
-                register_in_left: InReg::new(1, 2),
-                register_in_right: InReg::new(1, 3),
+                left: InReg::new(1, 2),
+                right: InReg::new(1, 3),
             }
             .into(),
         );
@@ -185,8 +179,8 @@ mod tests {
         ops.push(
             Add {
                 register_out: OutReg::new(false, 1, 5),
-                register_in_left: InReg::new(1, 2),
-                register_in_right: InReg::new(1, 3),
+                left: InReg::new(1, 2),
+                right: InReg::new(1, 3),
             }
             .into(),
         );
@@ -194,8 +188,8 @@ mod tests {
         ops.push(
             Add {
                 register_out: OutReg::new(false, 3, 6),
-                register_in_left: InReg::new(1, 2),
-                register_in_right: InReg::new(1, 3),
+                left: InReg::new(1, 2),
+                right: InReg::new(1, 3),
             }
             .into(),
         );
@@ -203,8 +197,8 @@ mod tests {
         ops.push(
             Add {
                 register_out: OutReg::new(false, 3, 7),
-                register_in_left: InReg::new(3, 2),
-                register_in_right: InReg::new(3, 3),
+                left: InReg::new(3, 2),
+                right: InReg::new(3, 3),
             }
             .into(),
         );
@@ -212,8 +206,8 @@ mod tests {
         ops.push(
             Add {
                 register_out: OutReg::new(true, 1, 8),
-                register_in_left: InReg::new(3, 2),
-                register_in_right: InReg::new(3, 3),
+                left: InReg::new(3, 2),
+                right: InReg::new(3, 3),
             }
             .into(),
         );

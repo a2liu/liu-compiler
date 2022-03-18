@@ -304,7 +304,7 @@ pub enum Opcode {
         register_out: u8,
         stack_slot: u16,
     },
-    // opcode u8-register-output u16-stack-slot u32-value-high-order-bits u32-low-order-bits
+    // opcode u8-register-output u16-stack-slot u32-low-order-bits u32-value-high-order-bits
     Make64 {
         register_out: Out64Reg,
         stack_slot: StackSlot,
@@ -354,8 +354,8 @@ pub enum Opcode {
     // opcode u8-register-output u8-register-input u8-register-input
     Add {
         register_out: OutReg,
-        register_in_left: InReg,
-        register_in_right: InReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     Sub {

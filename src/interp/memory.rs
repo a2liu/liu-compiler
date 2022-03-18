@@ -85,9 +85,37 @@ impl Memory {
         return Ok(());
     }
 
+    pub fn read_unsigned_reg<R: Register>(&self, r: R) -> Result<u64, IError> {
+        let id = r.expect_id()?;
+
+        let offset = self.current_frame.registers_start + (id as u32) * 8;
+        let ptr = &self.data.bytes[offset] as *const u8 as *const u64;
+        let raw_value = unsafe { *ptr };
+
+        let size_class = r.size_class();
+
+        let value = truncate(size_class, raw_value);
+
+        return Ok(value);
+    }
+
+    pub fn read_signed_reg<R: Register>(&self, r: R) -> Result<i64, IError> {
+        let id = r.expect_id()?;
+
+        let offset = self.current_frame.registers_start + (id as u32) * 8;
+        let ptr = &self.data.bytes[offset] as *const u8 as *const u64;
+        let raw_value = unsafe { *ptr };
+
+        let size_class = r.size_class();
+
+        let value = sign_extend_and_truncate(size_class, raw_value);
+
+        return Ok(value);
+    }
+
     pub fn read_register(&self, id: u8) -> Result<u64, IError> {
         if id >= 32 {
-            return Err(IError::new("invalid register value"));
+            return Err(IError::new("internal error: invalid register value"));
         }
 
         let offset = self.current_frame.registers_start + (id as u32) * 8;

@@ -48,10 +48,10 @@ mod tests {
     //     run_on_file("procedures.liu", "");
     // }
 
-    // #[test]
-    // fn simple() {
-    //     run_on_file("simple.liu", "12 37\n12\n");
-    // }
+    #[test]
+    fn simple() {
+        run_on_file("simple.liu", "12 37\n12\n");
+    }
 
     fn run_on_file(name: &str, expected: &str) {
         let mut path = "tests/".to_string();
@@ -93,7 +93,11 @@ mod tests {
 
         let ast = parse(&table, 0, data)?;
 
-        let graph = check_ast(&ast)?;
+        let (graph, entry) = check_ast(&ast)?;
+
+        let mut assembler = Assembler::new();
+
+        assembler.assemble(&graph, entry);
 
         let mut out = String::new();
         let data = AllocTracker::new();

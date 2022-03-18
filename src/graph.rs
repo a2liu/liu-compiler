@@ -16,7 +16,7 @@ pub enum Operand {
     ConstantU64 { value: u64 },
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum OpKind {
     Loc {
         expr: ExprId,
