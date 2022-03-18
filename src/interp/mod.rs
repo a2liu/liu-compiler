@@ -32,10 +32,10 @@ impl<'a> Interpreter<'a> {
             let opcode: Opcode = self.memory.read_op()?.into();
 
             match opcode {
-                StackAlloc { len, register_out } => {
+                StackAlloc { len, save_address } => {
                     let ptr = self.memory.alloc_stack_var(len)?;
 
-                    if let Some(id) = register_out.id() {
+                    if let Some(id) = save_address.id() {
                         self.memory.write_register(id, ptr)?;
                     }
 
@@ -140,7 +140,7 @@ mod tests {
         ops.push(
             StackAlloc {
                 len: AllocLen::new(8),
-                register_out: Out64Reg::new(1),
+                save_address: Out64Reg::new(1),
             }
             .into(),
         );

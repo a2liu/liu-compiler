@@ -278,7 +278,7 @@ pub enum Opcode {
     // opcode u8-len-power u8-len u8-register-output
     StackAlloc {
         len: AllocLen,
-        register_out: Out64Reg,
+        save_address: Out64Reg,
     },
     // opcode u8 u16-count
     StackDealloc {

@@ -10,16 +10,24 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 // local into op result references
 #[derive(Debug, Clone, Copy)]
 pub enum Operand {
-    ReferenceToStackLocal { id: u32, offset: u16 },
-    StackLocal { id: u32 },
+    ReferenceToStackLocal { id: u16, offset: u16 },
+    StackLocal { id: u16, offset: u16 },
     OpResult { id: u32 },
-    ConstantU64 { value: u64 },
+    Null,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpKind {
     Loc {
         expr: ExprId,
+    },
+
+    ConstantU64 {
+        value: u64,
+    },
+
+    StackVar {
+        size: u32,
     },
 
     // Stores: no output value

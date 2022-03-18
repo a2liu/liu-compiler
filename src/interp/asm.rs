@@ -29,6 +29,22 @@ impl Assembler {
                     self.current_expr = expr;
                 }
 
+                StackVar { size } => {
+                    let len = AllocLen::new(size);
+                    self.push(Opcode::StackAlloc {
+                        len,
+                        save_address: Out64Reg::null(),
+                    });
+                }
+
+                Store64 { pointer, value } => {
+                    match value {
+                        _ => {}
+                    }
+
+                    unimplemented!("{:?}", op);
+                }
+
                 _ => {
                     unimplemented!("{:?}", op);
                 }

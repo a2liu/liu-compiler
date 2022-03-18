@@ -30,7 +30,7 @@ impl Value {
 }
 
 const NULL: Value = Value {
-    op: Operand::ConstantU64 { value: 0 },
+    op: Operand::Null,
     ty: Type::Null,
 };
 
@@ -132,17 +132,25 @@ impl<'a> CheckEnv<'a> {
             }
 
             Integer(value) => {
-                return Ok(Value::new(Operand::ConstantU64 { value }, Type::Unsigned));
+                self.graph.loc(id);
+                let op = self.graph.add(OpKind::ConstantU64 { value });
+
+                return Ok(Value::new(op, Type::Unsigned));
             }
 
             Let { symbol, value } => {
                 let result = self.check_expr(value)?;
 
-                let id = self.scope.declare(id, symbol, result.ty)?;
+                let stack_id = self.scope.declare(id, symbol, result.ty)?;
 
-                self.graph.loc(value);
+                self.graph.loc(id);
+                self.graph.add(OpKind::StackVar { size: 8 });
+
                 self.graph.add(OpKind::Store64 {
-                    pointer: Operand::ReferenceToStackLocal { id, offset: 0 },
+                    pointer: Operand::ReferenceToStackLocal {
+                        id: stack_id,
+                        offset: 0,
+                    },
                     value: result.op,
                 });
 
@@ -232,11 +240,11 @@ impl<'a> CheckEnv<'a> {
 
 enum ScopeKind<'a> {
     Global {
-        next_variable_id: Cell<u32>,
+        next_variable_id: Cell<u16>,
     },
     Procedure {
         parent: &'a ScopeEnv<'a>,
-        next_variable_id: Cell<u32>,
+        next_variable_id: Cell<u16>,
     },
     Local {
         parent: &'a ScopeEnv<'a>,
@@ -245,7 +253,7 @@ enum ScopeKind<'a> {
 
 #[derive(Clone, Copy)]
 struct VariableInfo {
-    id: u32,
+    id: u16,
     ty: Type,
 }
 
@@ -282,7 +290,7 @@ impl<'a> ScopeEnv<'a> {
         }
     }
 
-    fn declare(&mut self, id: ExprId, symbol: u32, ty: Type) -> Result<u32, Error> {
+    fn declare(&mut self, id: ExprId, symbol: u32, ty: Type) -> Result<u16, Error> {
         use std::collections::hash_map::Entry;
 
         let e = match self.vars.entry(symbol) {
