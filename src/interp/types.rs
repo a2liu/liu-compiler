@@ -582,8 +582,8 @@ pub enum Opcode {
     // opcode u8-skip-frames u8-register-pointer-input u8-register-64-input
     Throw {
         skip_frames: u8,
-        register_pointer_input: In64Reg,
-        register_64_input: In64Reg,
+        message_ptr: In64Reg,
+        message_len: In64Reg,
     },
 }
 
