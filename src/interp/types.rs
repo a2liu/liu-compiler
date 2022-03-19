@@ -135,9 +135,6 @@ pub struct Out64Reg(u8);
 
 impl Out64Reg {
     pub const NULL: Self = Self(0);
-    pub fn null() -> Self {
-        return Self(0);
-    }
 
     pub fn new(id: u8) -> Self {
         assert!(id < 32);
@@ -163,16 +160,14 @@ impl Register for Out64Reg {
 pub struct OutReg(u8);
 
 impl OutReg {
-    pub fn null(signed: bool, size_class: u8) -> Self {
-        assert!(size_class < 4);
-
+    pub fn null(signed: RegSignedness, size_class: RegSize) -> Self {
         let sign_bit = (signed as u8) << 7;
-        let size_class = size_class << 5;
+        let size_class = (size_class as u8) << 5;
 
         return Self(sign_bit | size_class);
     }
 
-    pub fn new(signed: bool, size_class: RegSize, id: u8) -> Self {
+    pub fn new(signed: RegSignedness, size_class: RegSize, id: u8) -> Self {
         assert!(id < 32);
         assert!(id != 0);
 

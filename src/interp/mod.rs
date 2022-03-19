@@ -169,7 +169,7 @@ mod tests {
 
         ops.push(
             Add {
-                register_out: OutReg::new(false, RegSize64, 4),
+                register_out: OutReg::new(RegUnsigned, RegSize64, 4),
                 left: InReg::new(RegSize16, 2),
                 right: InReg::new(RegSize16, 3),
             }
@@ -178,7 +178,7 @@ mod tests {
 
         ops.push(
             Add {
-                register_out: OutReg::new(false, RegSize16, 5),
+                register_out: OutReg::new(RegUnsigned, RegSize16, 5),
                 left: InReg::new(RegSize16, 2),
                 right: InReg::new(RegSize16, 3),
             }
@@ -187,7 +187,7 @@ mod tests {
 
         ops.push(
             Add {
-                register_out: OutReg::new(false, RegSize64, 6),
+                register_out: OutReg::new(RegUnsigned, RegSize64, 6),
                 left: InReg::new(RegSize16, 2),
                 right: InReg::new(RegSize16, 3),
             }
@@ -196,7 +196,7 @@ mod tests {
 
         ops.push(
             Add {
-                register_out: OutReg::new(false, RegSize64, 7),
+                register_out: OutReg::new(RegUnsigned, RegSize64, 7),
                 left: InReg::new(RegSize64, 2),
                 right: InReg::new(RegSize64, 3),
             }
@@ -205,7 +205,7 @@ mod tests {
 
         ops.push(
             Add {
-                register_out: OutReg::new(true, RegSize16, 8),
+                register_out: OutReg::new(RegSigned, RegSize16, 8),
                 left: InReg::new(RegSize64, 2),
                 right: InReg::new(RegSize64, 3),
             }

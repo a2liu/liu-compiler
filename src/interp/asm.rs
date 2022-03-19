@@ -36,7 +36,7 @@ impl Assembler {
                     let len = AllocLen::new(size);
                     self.push(Opcode::StackAlloc {
                         len,
-                        save_address: Out64Reg::null(),
+                        save_address: Out64Reg::NULL,
                     });
                 }
 
