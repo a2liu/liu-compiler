@@ -51,6 +51,7 @@ its backend.
 - Some kind of "throw error" thing, but not using stack unwinding
 - Nullable checks: `a ?? b`, `a?.b`, `a?(`, `a?[`, etc.
 - Some kind of "pass up this if it throws" thing, i.e. `could_error()!`
+- Default hard-crash for error types?
 
 ## IDK Yet
 - Macros
@@ -69,6 +70,11 @@ its backend.
 - Modify AST
 - Custom typechecking
 - Inheritance using explicit type field? Call it closed and it can become an enum?
+- Ability to take same memory and have it behave in different ways without a
+  bunch of different boilerplate stuff. Like, i want to take the same memory
+  layout, and do a different thing on it depending on some compile-time constraints.
+  I want to be sure that the type doesn't cause generation of a bunch of unnecessary
+  code, but that the compile-time constraints are kept constant.
 
 ## Too Complex, use compiler API
 - Python ABI

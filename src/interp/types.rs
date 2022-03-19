@@ -14,6 +14,25 @@ impl IError {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum RegSignedness {
+    RegUnsigned = 0,
+    RegSigned = 1,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum RegSize {
+    RegSize8 = 0,
+    RegSize16 = 1,
+    RegSize32 = 2,
+    RegSize64 = 3,
+}
+
+pub use RegSignedness::*;
+pub use RegSize::*;
+
 pub fn sign_extend_and_truncate(size_class: u8, value: u64) -> i64 {
     let value_size = 1 << size_class;
     let shift_size = (8 - value_size) * 8;
@@ -23,6 +42,7 @@ pub fn sign_extend_and_truncate(size_class: u8, value: u64) -> i64 {
 }
 
 pub fn truncate(size_class: u8, value: u64) -> u64 {
+    dbg!(size_class);
     let value_size = 1 << size_class;
     let shift_size = (8 - value_size) * 8;
     let truncated_value = value << shift_size;
@@ -57,13 +77,15 @@ pub const REGISTER_CALL_ID: u8 = 0;
 pub struct InReg(u8);
 
 impl InReg {
-    pub fn new(size_class: u8, id: u8) -> Self {
+    pub const NULL: Self = Self(0);
+
+    pub fn new(size_class: RegSize, id: u8) -> Self {
         assert!(id < 32);
-        assert!(size_class < 4);
 
-        let size_class = size_class << 5;
+        let not_null = 1u8 << 7;
+        let size_class = (size_class as u8) << 5;
 
-        return Self(size_class | id);
+        return Self(not_null | size_class | id);
     }
 }
 
@@ -73,7 +95,7 @@ impl Register for InReg {
     }
 
     fn id(self) -> Option<u8> {
-        if (self.0 & (1 << 7)) != 0 {
+        if self.0 == 0 {
             return None;
         }
 
@@ -85,9 +107,21 @@ impl Register for InReg {
 #[repr(transparent)]
 pub struct In64Reg(u8);
 
+impl In64Reg {
+    pub const NULL: Self = Self(0);
+
+    pub fn new(id: u8) -> Self {
+        assert!(id < 32);
+
+        let not_null = 1u8 << 7;
+
+        return Self(not_null | id);
+    }
+}
+
 impl Register for In64Reg {
     fn id(self) -> Option<u8> {
-        if (self.0 & (1 << 7)) != 0 {
+        if self.0 == 0 {
             return None;
         }
 
@@ -100,6 +134,7 @@ impl Register for In64Reg {
 pub struct Out64Reg(u8);
 
 impl Out64Reg {
+    pub const NULL: Self = Self(0);
     pub fn null() -> Self {
         return Self(0);
     }
@@ -137,13 +172,12 @@ impl OutReg {
         return Self(sign_bit | size_class);
     }
 
-    pub fn new(signed: bool, size_class: u8, id: u8) -> Self {
+    pub fn new(signed: bool, size_class: RegSize, id: u8) -> Self {
         assert!(id < 32);
-        assert!(size_class < 4);
         assert!(id != 0);
 
         let sign_bit = (signed as u8) << 7;
-        let size_class = size_class << 5;
+        let size_class = (size_class as u8) << 5;
 
         return Self(sign_bit | size_class | id);
     }
@@ -172,6 +206,17 @@ impl Register for OutReg {
 pub struct StackSlot {
     pub id: u8,
     pub offset: u8,
+}
+
+impl StackSlot {
+    pub const MEH: Self = Self {
+        id: 255,
+        offset: 255,
+    };
+
+    pub fn new(id: u8) -> Self {
+        return Self { id, offset: 0 };
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -246,12 +291,12 @@ impl AllocLen {
 //
 // -    For register-pointer-input/register-64-input:
 //      -   Input size is always 64 bits
-//      -   Highest bit is set when the register is null
+//      -   Highest bit is set when the register is not null
 //      -   Next 2 bits are dummy
 //      -   Next 5 bits decide the register ID
 //
 // -    For register-input:
-//      -   Highest bit is set when the register is null
+//      -   Highest bit is set when the register is not null
 //      -   Next 2 bits control size (00 = 8bit, 01 = 16bit, 10 = 32bit, 11 = 64 bit)
 //          always read from lower-order bits when size is less than 64 bits
 //      -   Next 5 bits decide the register ID
@@ -311,7 +356,7 @@ pub enum Opcode {
     },
     // opcode u8-register-output u16-stack-id
     MakeFp {
-        register_out: OutReg,
+        register_out: Out64Reg,
         stack_id: u16,
     },
 
@@ -327,7 +372,18 @@ pub enum Opcode {
         stack_slot: u16,
     },
     // opcode u8-register-output u16-stack-slot
-    BoolNot,
+    BoolNot {
+        register_out: u8,
+        stack_slot: u16,
+    },
+
+    // This is specifically intended to be used for adding an offset to a frame
+    // pointer created with MakeFp, reducing the number of registers and instructions
+    // that need to be used to make a pointer to the stack.
+    Add16 {
+        register_out: Out64Reg,
+        value: u16,
+    },
 
     // opcode u8-register-output u8-register-pointer-input u8
     Get {
@@ -336,8 +392,8 @@ pub enum Opcode {
     },
     // opcode u8-register-pointer-input u8-register-input u8
     Set {
-        register_pointer_in: u8,
-        register_input: u8,
+        pointer: In64Reg,
+        value: InReg,
     },
 
     // Register inputs are source, destination, length

@@ -23,7 +23,10 @@ impl Assembler {
 
         let ops = &graph.ops[block.ops];
 
+        let offset = block.ops.start as u32;
+        let mut opcode_id = offset;
         for &op in ops {
+            let register = (opcode_id + 1) as u8;
             match op {
                 Loc { expr } => {
                     self.current_expr = expr;
@@ -37,12 +40,48 @@ impl Assembler {
                     });
                 }
 
-                Store64 { pointer, value } => {
-                    match value {
-                        _ => {}
-                    }
+                ConstantU64 { value } => {
+                    self.push(Opcode::Make64 {
+                        register_out: Out64Reg::new(register),
+                        stack_slot: StackSlot::MEH,
+                    });
 
-                    unimplemented!("{:?}", op);
+                    self.push((value >> 32) as u32);
+                    self.push(value as u32);
+                }
+
+                Store64 { pointer, value } => {
+                    let value_register_id = match value {
+                        OpResult { id } => (id - offset + 1) as u8,
+
+                        _ => {
+                            unimplemented!("{:?}", op);
+                        }
+                    };
+
+                    match pointer {
+                        ReferenceToStackLocal { id, offset } => {
+                            self.push(Opcode::MakeFp {
+                                register_out: Out64Reg::new(register),
+                                stack_id: id,
+                            });
+
+                            if offset != 0 {
+                                self.push(Opcode::Add16 {
+                                    register_out: Out64Reg::new(register),
+                                    value: offset,
+                                });
+                            }
+
+                            self.push(Opcode::Set {
+                                pointer: In64Reg::new(register),
+                                value: InReg::new(RegSize64, value_register_id),
+                            });
+                        }
+                        _ => {
+                            unimplemented!("{:?}", op);
+                        }
+                    }
                 }
 
                 _ => {

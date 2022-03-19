@@ -169,45 +169,45 @@ mod tests {
 
         ops.push(
             Add {
-                register_out: OutReg::new(false, 3, 4),
-                left: InReg::new(1, 2),
-                right: InReg::new(1, 3),
+                register_out: OutReg::new(false, RegSize64, 4),
+                left: InReg::new(RegSize16, 2),
+                right: InReg::new(RegSize16, 3),
             }
             .into(),
         );
 
         ops.push(
             Add {
-                register_out: OutReg::new(false, 1, 5),
-                left: InReg::new(1, 2),
-                right: InReg::new(1, 3),
+                register_out: OutReg::new(false, RegSize16, 5),
+                left: InReg::new(RegSize16, 2),
+                right: InReg::new(RegSize16, 3),
             }
             .into(),
         );
 
         ops.push(
             Add {
-                register_out: OutReg::new(false, 3, 6),
-                left: InReg::new(1, 2),
-                right: InReg::new(1, 3),
+                register_out: OutReg::new(false, RegSize64, 6),
+                left: InReg::new(RegSize16, 2),
+                right: InReg::new(RegSize16, 3),
             }
             .into(),
         );
 
         ops.push(
             Add {
-                register_out: OutReg::new(false, 3, 7),
-                left: InReg::new(3, 2),
-                right: InReg::new(3, 3),
+                register_out: OutReg::new(false, RegSize64, 7),
+                left: InReg::new(RegSize64, 2),
+                right: InReg::new(RegSize64, 3),
             }
             .into(),
         );
 
         ops.push(
             Add {
-                register_out: OutReg::new(true, 1, 8),
-                left: InReg::new(3, 2),
-                right: InReg::new(3, 3),
+                register_out: OutReg::new(true, RegSize16, 8),
+                left: InReg::new(RegSize64, 2),
+                right: InReg::new(RegSize64, 3),
             }
             .into(),
         );
