@@ -217,8 +217,8 @@ mod tests {
         ops.push(
             Ecall {
                 ecall_type: 0,
-                register_64_input_1: 0,
-                register_64_input_2: 0,
+                input_1: In64Reg::NULL,
+                input_2: In64Reg::NULL,
             }
             .into(),
         );

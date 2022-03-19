@@ -282,7 +282,7 @@ impl AllocLen {
 //          the high order bytes
 //      -   Next 5 bits decide the register ID
 //      -   register-output cannot be written to by anything except call and ret,
-//          so using RET_ID as the id is invalid
+//          so using RET_ID as the id means that the id is null
 //
 // -    For register-pointer-input/register-64-input:
 //      -   Input size is always 64 bits
@@ -326,26 +326,29 @@ pub enum Opcode {
     },
     // opcode u8-register-output u8-register-64-input u8
     HeapAlloc {
-        register_out: u8,
-        register_64_in: u8,
+        register_out: Out64Reg,
+        register_64_in: In64Reg,
     },
     // opcode u8-register-64-input u16
     HeapDealloc {
-        register_64_input: u8,
+        register_64_in: In64Reg,
     },
 
     // opcode u8-register-output u16-value
     Make16 {
-        register_out: u8,
+        register_out: OutReg,
         value: u16,
     },
     // opcode u8-register-output u16-stack-slot u32-value
     Make32 {
-        register_out: u8,
+        register_out: OutReg,
         stack_slot: u16,
     },
-    // opcode u8-register-output u16-stack-slot u32-low-order-bits u32-value-high-order-bits
+    // opcode u8-register-output u16-stack-slot u32-low-order-bits u32-high-order-bits
     Make64 {
+        // This is Out64Reg because if you need sign-extension/truncation behavior,
+        // you could've just used Make32 or Make16. Like if you're truncating
+        // to 32 bits anyways, just truncate ahead of time, and use Make32.
         register_out: Out64Reg,
         stack_slot: StackSlot,
     },
@@ -358,17 +361,19 @@ pub enum Opcode {
     // in-place
     // opcode u8-register-output u16-stack-slot
     Truncate {
-        register_out: u8,
+        register_out: OutReg,
         stack_slot: u16,
     },
     // opcode u8-register-output u16-stack-slot
+    // ignores sign extension
     BoolNorm {
-        register_out: u8,
+        register_out: OutReg,
         stack_slot: u16,
     },
     // opcode u8-register-output u16-stack-slot
+    // ignores sign extension
     BoolNot {
-        register_out: u8,
+        register_out: OutReg,
         stack_slot: u16,
     },
 
@@ -382,8 +387,8 @@ pub enum Opcode {
 
     // opcode u8-register-output u8-register-pointer-input u8
     Get {
-        register_out: u8,
-        register_pointer_in: u8,
+        register_out: OutReg,
+        pointer: In64Reg,
     },
     // opcode u8-register-pointer-input u8-register-input u8
     Set {
@@ -394,9 +399,9 @@ pub enum Opcode {
     // Register inputs are source, destination, length
     // opcode u8-register-pointer-input u8-register-pointer-input u8-register-64-input
     MemCopy {
-        register_pointer_in_src: u8,
-        register_pointer_in_dest: u8,
-        register_pointer_64_in: u8,
+        source: In64Reg,
+        dest: In64Reg,
+        byte_count: In64Reg,
     },
 
     // Wrapping Integer operations
@@ -410,98 +415,98 @@ pub enum Opcode {
     },
     // opcode u8-register-output u8-register-input u8-register-input
     Sub {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     Mul {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     Div {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     Mod {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
 
     // opcode u8-register-output u8-register-input u8-register-input
     RShift {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     LShift {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
 
     // Ignores signedness
     // opcode u8-register-output u8-register-input u8-register-input
     BitAnd {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     BitOr {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     BitXor {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     BitNot {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
 
     // Floating point
     // opcode u8-register-output u8-register-input u8-register-input
     FAdd {
         register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     FSub {
         register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     FMul {
         register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     FDiv {
         register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     FMod {
         register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        left: InReg,
+        right: InReg,
     },
 
     // register-output size is implicitly ignored, because its not relevant here
@@ -509,27 +514,27 @@ pub enum Opcode {
     // into 64 bits and also the comparison signed-ness
     // opcode u8-register-output u8-register-input u8-register-input
     CompLt {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     CompLeq {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     CompEq {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
     // opcode u8-register-output u8-register-input u8-register-input
     CompNeq {
-        register_out: u8,
-        register_in_left: u8,
-        register_in_right: u8,
+        register_out: OutReg,
+        left: InReg,
+        right: InReg,
     },
 
     // The jumps here stays in the same allocation as they started in; the address
@@ -561,7 +566,7 @@ pub enum Opcode {
     // parameter only touches the offset part of the pointer
     // opcode u8-register-output u8-arg-count u8 u32-address
     Call {
-        register_out: u8,
+        register_out: Out64Reg,
         arg_count: u8,
     },
 
@@ -569,16 +574,16 @@ pub enum Opcode {
     // opcode u8-ecall-type u8-register-64-input u8-register-64-input
     Ecall {
         ecall_type: u8,
-        register_64_input_1: u8,
-        register_64_input_2: u8,
+        input_1: In64Reg,
+        input_2: In64Reg,
     },
 
     // Register inputs are string pointer and string length
     // opcode u8-skip-frames u8-register-pointer-input u8-register-64-input
     Throw {
         skip_frames: u8,
-        register_pointer_input: u8,
-        register_64_input: u8,
+        register_pointer_input: In64Reg,
+        register_64_input: In64Reg,
     },
 }
 

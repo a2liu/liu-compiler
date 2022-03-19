@@ -52,6 +52,19 @@ its backend.
 - Nullable checks: `a ?? b`, `a?.b`, `a?(`, `a?[`, etc.
 - Some kind of "pass up this if it throws" thing, i.e. `could_error()!`
 - Default hard-crash for error types?
+- Memory layouts that don't encode types themselves, but get typechecked, e.g.
+
+  ```
+  layout a {
+  }
+
+  type b layout a
+  ```
+
+- `proc a = b`, to prevent unnecessary duplication of code in the binary/optimization
+  phase, and weird inlining stuffs
+  - `proc a(a, b) = b(b, a, 12)` doesn't require inlining during codegen, and
+    can be inlined immediately
 
 ## IDK Yet
 - Macros
