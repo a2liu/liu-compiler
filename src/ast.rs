@@ -109,9 +109,9 @@ impl ExprKind {
 struct AstGlobalAllocator {
     len: AtomicUsize,
     capacity: usize,
-    tree: region::Allocation,
-    locs: region::Allocation,
-    files: region::Allocation,
+    tree: *const ExprKind,
+    locs: *const CopyRange<u32>,
+    files: *const u32,
 }
 
 // TODO actually figure out what numbers here would be good
@@ -123,21 +123,21 @@ unsafe impl Sync for AstGlobalAllocator {}
 
 lazy_static! {
     static ref AST_ALLOC: AstGlobalAllocator = {
-        let tree = expect(region::alloc(ALLOC_SIZE, region::Protection::READ_WRITE));
+        let null = core::ptr::null();
+        let tree = expect(unsafe { map_region(null, ALLOC_SIZE) });
+        let tree = tree as *mut ExprKind as *const ExprKind;
 
-        let capacity = tree.len() / core::mem::size_of::<ExprKind>();
+        let capacity = ALLOC_SIZE / core::mem::size_of::<ExprKind>();
         let range_count = capacity / RANGE_SIZE;
         let capacity = range_count * RANGE_SIZE;
 
-        let locs = expect(region::alloc(
-            capacity * core::mem::size_of::<CopyRange<u32>>(),
-            region::Protection::READ_WRITE,
-        ));
+        let locs_size = capacity * core::mem::size_of::<CopyRange<u32>>();
+        let locs = expect(unsafe { map_region(null, locs_size) });
+        let locs = locs as *mut CopyRange<u32> as *const CopyRange<u32>;
 
-        let files = expect(region::alloc(
-            range_count * core::mem::size_of::<u32>(),
-            region::Protection::READ_WRITE,
-        ));
+        let files_size = range_count * core::mem::size_of::<u32>();
+        let files = expect(unsafe { map_region(null, files_size) });
+        let files = files as *mut u32 as *const u32;
 
         AstGlobalAllocator {
             len: AtomicUsize::new(0),
@@ -167,7 +167,7 @@ impl core::ops::Deref for ExprId {
         let arena = &*AST_ALLOC;
 
         unsafe {
-            let exprs = arena.tree.as_ptr() as *const ExprKind;
+            let exprs = arena.tree;
             let exprs = core::slice::from_raw_parts(exprs, arena.capacity);
 
             let index = self.0 as usize;
@@ -184,7 +184,7 @@ impl core::ops::Deref for ExprRange {
         let arena = &*AST_ALLOC;
 
         unsafe {
-            let exprs = arena.tree.as_ptr() as *const ExprKind;
+            let exprs = arena.tree;
             let exprs = core::slice::from_raw_parts(exprs, arena.capacity);
 
             let start = self.0 as usize;
@@ -238,8 +238,8 @@ impl ExprId {
         let arena = &*AST_ALLOC;
 
         unsafe {
-            let files = arena.files.as_ptr() as *const u32;
-            let locs = arena.locs.as_ptr() as *const CopyRange<u32>;
+            let files = arena.files;
+            let locs = arena.locs;
 
             let files = core::slice::from_raw_parts(files, arena.capacity / RANGE_SIZE);
             let locs = core::slice::from_raw_parts(locs, arena.capacity);
@@ -271,9 +271,9 @@ impl AstAlloc {
     pub fn new(file: u32) -> Self {
         let arena = &*AST_ALLOC;
 
-        let tree = arena.tree.as_ptr() as *const ExprKind;
-        let files = arena.files.as_ptr() as *const u32;
-        let locs = arena.locs.as_ptr() as *const CopyRange<u32>;
+        let tree = arena.tree;
+        let files = arena.files;
+        let locs = arena.locs;
 
         return Self {
             file,
