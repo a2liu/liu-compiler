@@ -1,7 +1,7 @@
 use crate::*;
 use core::cell::*;
 use core::mem::*;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 // bruh, idk what the deal is. idk what kind of system to use here. we'll figure
 // it out later ig.
@@ -23,6 +23,7 @@ pub enum GraphOpKind {
     },
 
     ConstantU64 {
+        output_id: u32,
         value: u64,
     },
 
@@ -31,47 +32,16 @@ pub enum GraphOpKind {
         size: u32,
     },
 
-    // Stores: no output value
-    Store8 {
-        pointer: Operand,
-        value: Operand,
+    StoreStack64 {
+        stack_id: u16,
+        offset: u16,
+        input_id: u32,
     },
-    Store16 {
-        pointer: Operand,
-        value: Operand,
-    },
-    Store32 {
-        pointer: Operand,
-        value: Operand,
-    },
-    Store64 {
-        pointer: Operand,
-        value: Operand,
-    },
-
-    Load8 {
-        pointer: Operand,
-    },
-    Load16 {
-        pointer: Operand,
-    },
-    Load32 {
-        pointer: Operand,
-    },
-    Load64 {
-        pointer: Operand,
-    },
-
-    // SSA block parameter/phi node stuff
-    Forward {
-        block_input_id: u32,
-        id: Operand,
-    },
-    BlockInput {},
 
     Add64 {
-        op1: Operand,
-        op2: Operand,
+        out: u32,
+        op1: u32,
+        op2: u32,
     },
 
     BuiltinPrint {
@@ -80,23 +50,18 @@ pub enum GraphOpKind {
     BuiltinNewline,
 
     // Control flow
-    BranchNeqZero {
-        conditional: u32,
-        block_if_true: u32,
-        block_if_false: u32,
-    },
     ExitSuccess,
-    Jump {
-        block: u32,
-    },
 }
 
 #[derive(Clone, Copy)]
-pub struct GraphOp {}
+pub struct GraphOp {
+    kind: GraphOpKind,
+}
 
 #[derive(Clone, Copy)]
 pub struct BBInfo {
     pub ops: CopyRange,
+    // pub is_ssa: bool,
 }
 
 pub struct Graph {
@@ -136,4 +101,60 @@ impl Graph {
 
         self.ops.push(op);
     }
+}
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct BlockRef(u32);
+
+pub struct BlockInfo {
+    ops_data: AtomicU64,
+    // pub is_ssa: bool,
+}
+
+impl BlockInfo {
+    pub fn ops(&self) -> &[GraphOp] {
+        let data = self.ops_data.load(Ordering::SeqCst);
+
+        let range: CopyRange<u32> = unsafe { core::mem::transmute(data) };
+
+        // TODO
+        return &[];
+    }
+}
+
+struct GraphAllocator {
+    ops_capacity: usize,
+    ops: *const GraphOp,
+    ops_len: AtomicUsize,
+
+    free_block: u32,
+
+    blocks_capacity: usize,
+    blocks: *const BlockInfo,
+    blocks_len: AtomicUsize,
+}
+
+unsafe impl Sync for GraphAllocator {}
+
+lazy_static! {
+    static ref GRAPH: GraphAllocator = {
+        let ops = unsafe { map_region(core::ptr::null(), 100) }.unwrap();
+        let ops = ops as *const GraphOp;
+
+        let blocks = unsafe { map_region(core::ptr::null(), 100) }.unwrap();
+        let blocks = blocks as *const BlockInfo;
+
+        GraphAllocator {
+            ops_capacity: 0,
+            ops,
+            ops_len: AtomicUsize::new(0),
+
+            free_block: 0,
+
+            blocks_capacity: 0,
+            blocks,
+            blocks_len: AtomicUsize::new(0),
+        }
+    };
 }
