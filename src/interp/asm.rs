@@ -24,7 +24,7 @@ impl Assembler {
         let ops = &graph.ops[block.ops];
 
         let offset = block.ops.start as u32;
-        let mut opcode_id = offset;
+        let mut opcode_id = 0;
 
         for &op in ops {
             let register = (opcode_id + 1) as u8;
@@ -133,6 +133,12 @@ impl Assembler {
                             InReg::new(RegSize64, register)
                         }
 
+                        OpResult { id } => {
+                            let register = (id + 1) as u8;
+
+                            InReg::new(RegSize64, register)
+                        }
+
                         _ => {
                             unimplemented!("{:?}", op)
                         }
@@ -156,6 +162,12 @@ impl Assembler {
                             InReg::new(RegSize64, register)
                         }
 
+                        OpResult { id } => {
+                            let register = (id + 1) as u8;
+
+                            InReg::new(RegSize64, register)
+                        }
+
                         _ => {
                             unimplemented!("{:?}", op)
                         }
@@ -172,6 +184,8 @@ impl Assembler {
                     unimplemented!("{:?}", op);
                 }
             }
+
+            opcode_id += 1;
         }
     }
 
