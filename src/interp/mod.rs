@@ -231,19 +231,15 @@ mod tests {
 
         let result = interp.run();
 
+        let sum = value_2_16 + value_2_15;
+        let sign_extended = value_2_15 as i16 as i64 as u64;
         assert_eq!(interp.memory.read_register(2).unwrap(), value_2_16);
         assert_eq!(interp.memory.read_register(3).unwrap(), value_2_15);
         assert_eq!(interp.memory.read_register(4).unwrap(), value_2_15);
         assert_eq!(interp.memory.read_register(5).unwrap(), value_2_15);
         assert_eq!(interp.memory.read_register(6).unwrap(), value_2_15);
-        assert_eq!(
-            interp.memory.read_register(7).unwrap(),
-            value_2_16 + value_2_15
-        );
-        assert_eq!(
-            interp.memory.read_register(8).unwrap(),
-            value_2_15 as i16 as i64 as u64
-        );
+        assert_eq!(interp.memory.read_register(7).unwrap(), sum);
+        assert_eq!(interp.memory.read_register(8).unwrap(), sign_extended);
 
         match result {
             Ok(_) => {}

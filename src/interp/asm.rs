@@ -25,8 +25,10 @@ impl Assembler {
 
         let offset = block.ops.start as u32;
         let mut opcode_id = offset;
+
         for &op in ops {
             let register = (opcode_id + 1) as u8;
+
             match op {
                 Loc { expr } => {
                     self.current_expr = expr;
@@ -82,6 +84,88 @@ impl Assembler {
                             unimplemented!("{:?}", op);
                         }
                     }
+                }
+
+                Load64 { pointer } => {
+                    let pointer = match pointer {
+                        ReferenceToStackLocal { id, offset } => {
+                            self.push(Opcode::MakeFp {
+                                register_out: Out64Reg::new(register),
+                                stack_id: id,
+                            });
+
+                            if offset != 0 {
+                                self.push(Opcode::Add16 {
+                                    register_out: Out64Reg::new(register),
+                                    value: offset,
+                                });
+                            }
+
+                            In64Reg::new(register)
+                        }
+
+                        _ => {
+                            unimplemented!("{:?}", op)
+                        }
+                    };
+
+                    self.push(Opcode::Get {
+                        register_out: OutReg::new(RegUnsigned, RegSize64, register),
+                        pointer,
+                    });
+                }
+
+                Add64 { op1, op2 } => {
+                    let left = match op1 {
+                        ReferenceToStackLocal { id, offset } => {
+                            self.push(Opcode::MakeFp {
+                                register_out: Out64Reg::new(register),
+                                stack_id: id,
+                            });
+
+                            if offset != 0 {
+                                self.push(Opcode::Add16 {
+                                    register_out: Out64Reg::new(register),
+                                    value: offset,
+                                });
+                            }
+
+                            InReg::new(RegSize64, register)
+                        }
+
+                        _ => {
+                            unimplemented!("{:?}", op)
+                        }
+                    };
+
+                    let right = match op2 {
+                        ReferenceToStackLocal { id, offset } => {
+                            let register = register + 1;
+                            self.push(Opcode::MakeFp {
+                                register_out: Out64Reg::new(register),
+                                stack_id: id,
+                            });
+
+                            if offset != 0 {
+                                self.push(Opcode::Add16 {
+                                    register_out: Out64Reg::new(register),
+                                    value: offset,
+                                });
+                            }
+
+                            InReg::new(RegSize64, register)
+                        }
+
+                        _ => {
+                            unimplemented!("{:?}", op)
+                        }
+                    };
+
+                    self.push(Opcode::Add {
+                        register_out: OutReg::new(RegUnsigned, RegSize64, register),
+                        left,
+                        right,
+                    });
                 }
 
                 _ => {

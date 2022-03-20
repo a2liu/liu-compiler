@@ -662,20 +662,20 @@ impl AllocInfo {
     pub fn get_range(self) -> Result<(u32, u32), IError> {
         use AllocInfo::*;
 
-        #[rustfmt::skip]
         let (start, len) = match self {
             StackLive { start, len, .. }
             | HeapLive { start, len, .. }
-            | StaticExe { start, len, }
-            | Static { start, len, .. } => {
-                (start, len.len())
-            }
+            | StaticExe { start, len }
+            | Static { start, len, .. } => (start, len.len()),
 
-            StackDead { creation_op, } => {
+            StackDead { creation_op } => {
                 return Err(IError::new("stackdead"));
             }
 
-            HeapDead { creation_op, dealloc_op, } => {
+            HeapDead {
+                creation_op,
+                dealloc_op,
+            } => {
                 return Err(IError::new("stackdead"));
             }
         };
@@ -719,8 +719,11 @@ impl AllocTracker {
     pub fn read_op_at_index(&self, index: u32) -> u32 {
         let pointer = &self.bytes[index] as *const u8;
 
-        let offset = pointer.align_offset(4);
-        debug_assert_eq!(offset, 0);
+        #[cfg(debug_assertions)]
+        {
+            let offset = pointer.align_offset(4);
+            assert_eq!(offset, 0);
+        }
 
         return unsafe { *(pointer as *const u32) };
     }
