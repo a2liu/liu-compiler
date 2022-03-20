@@ -17,7 +17,7 @@ pub enum Operand {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum OpKind {
+pub enum GraphOpKind {
     Loc {
         expr: ExprId,
     },
@@ -27,6 +27,7 @@ pub enum OpKind {
     },
 
     StackVar {
+        // id: u32,
         size: u32,
     },
 
@@ -91,12 +92,15 @@ pub enum OpKind {
 }
 
 #[derive(Clone, Copy)]
+pub struct GraphOp {}
+
+#[derive(Clone, Copy)]
 pub struct BBInfo {
     pub ops: CopyRange,
 }
 
 pub struct Graph {
-    pub ops: Pod<OpKind>,
+    pub ops: Pod<GraphOp>,
     pub blocks: Pod<BBInfo>,
     current_begin: usize,
 }
@@ -124,14 +128,12 @@ impl Graph {
     }
 
     pub fn loc(&mut self, expr: ExprId) {
-        self.ops.push(OpKind::Loc { expr });
+        // self.ops.push(OpKind::Loc { expr });
     }
 
-    pub fn add(&mut self, op: OpKind) -> Operand {
+    pub fn add(&mut self, op: GraphOp) {
         let id = self.ops.len() as u32;
 
         self.ops.push(op);
-
-        return Operand::OpResult { id };
     }
 }

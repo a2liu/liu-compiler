@@ -9,6 +9,8 @@ good over time.
     Once you have a concrete problem or want to know what functions to call, the docs
     might help, but in general the resources online have not been helpful so far.
     Godbolt is usually much faster and more reliable.
+- Register allocation -
+  http://www.cse.iitm.ac.in/~krishna/courses/2017/even-cs6013/linearscan.pdf
 
 # Ideas
 
