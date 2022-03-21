@@ -16,13 +16,15 @@ impl Assembler {
     }
 
     pub fn assemble(&mut self, graph: &Graph, entry_block: u32) {
-        use GraphOpKind::*;
+        use GraphOp::*;
 
         let block = graph.blocks[entry_block];
 
         let ops = &graph.ops[block.ops];
 
         for &op in ops {}
+
+        unimplemented!();
     }
 
     pub fn push(&mut self, val: impl Into<u32>) {

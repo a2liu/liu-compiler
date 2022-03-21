@@ -6,21 +6,9 @@ use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 // bruh, idk what the deal is. idk what kind of system to use here. we'll figure
 // it out later ig.
 
-// during codegen we can use lifetime information to turn references to a stack
-// local into op result references
 #[derive(Debug, Clone, Copy)]
-pub enum Operand {
-    ReferenceToStackLocal { id: u16, offset: u16 },
-    StackLocal { id: u16, offset: u16 },
-    OpResult { id: u32 },
-    Null,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum GraphOpKind {
-    Loc {
-        expr: ExprId,
-    },
+pub enum GraphOp {
+    Loc(ExprId),
 
     ConstantU64 {
         output_id: u32,
@@ -30,6 +18,12 @@ pub enum GraphOpKind {
     StackVar {
         // id: u32,
         size: u32,
+    },
+
+    LoadStack64 {
+        output_id: u32,
+        stack_id: u16,
+        offset: u16,
     },
 
     StoreStack64 {
@@ -45,17 +39,12 @@ pub enum GraphOpKind {
     },
 
     BuiltinPrint {
-        op: Operand,
+        op: u32,
     },
     BuiltinNewline,
 
     // Control flow
     ExitSuccess,
-}
-
-#[derive(Clone, Copy)]
-pub struct GraphOp {
-    kind: GraphOpKind,
 }
 
 #[derive(Clone, Copy)]
@@ -67,7 +56,6 @@ pub struct BBInfo {
 pub struct Graph {
     pub ops: Pod<GraphOp>,
     pub blocks: Pod<BBInfo>,
-    current_begin: u32,
 }
 
 impl Graph {
@@ -75,31 +63,29 @@ impl Graph {
         return Graph {
             ops: Pod::new(),
             blocks: Pod::new(),
-            current_begin: 0,
         };
     }
 
-    pub fn complete_block(&mut self) -> u32 {
-        let begin = self.current_begin;
-        let end = self.ops.len() as u32;
-
+    pub fn get_block_id(&mut self) -> u32 {
         let id = self.blocks.len() as u32;
 
-        let ops = r(begin, end);
-
-        self.blocks.push(BBInfo { ops });
+        self.blocks.push(BBInfo { ops: r(0, 0) });
 
         return id;
     }
 
-    pub fn loc(&mut self, expr: ExprId) {
-        // self.ops.push(GraphOpKind::Loc { expr });
-    }
+    pub fn write_block(&mut self, id: u32, ops: Pod<GraphOp>) {
+        let start = self.ops.len() as u32;
 
-    pub fn add(&mut self, op: GraphOp) {
-        let id = self.ops.len() as u32;
+        self.ops.reserve(ops.len());
 
-        self.ops.push(op);
+        for op in ops {
+            self.ops.push(op);
+        }
+
+        let end = self.ops.len() as u32;
+
+        self.blocks[id] = BBInfo { ops: r(start, end) };
     }
 }
 

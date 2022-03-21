@@ -102,7 +102,7 @@ mod tests {
         let mut out = String::new();
         let data = AllocTracker::new();
         let mut interp = Interpreter::new(data, &mut out);
-        assert!(interp.run().is_ok());
+        interp.run().unwrap();
 
         return Ok(out);
     }
