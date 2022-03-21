@@ -50,8 +50,12 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
     let mut graph = GraphAppend {
         graph,
         block_id: entry,
-        op_id: 0,
         ops: Pod::new(),
+
+        // Making this start at 1 makes register allocation easier, and doesn't have
+        // any real ramifications long term.
+        //                              - Albert Liu, Mar 21, 2022 Mon 01:21 EDT
+        op_id: 1,
     };
 
     let mut env = CheckEnv {

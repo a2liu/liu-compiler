@@ -10,6 +10,10 @@ use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 pub enum GraphOp {
     Loc(ExprId),
 
+    ConstantU32 {
+        output_id: u32,
+        value: u32,
+    },
     ConstantU64 {
         output_id: u32,
         value: u64,

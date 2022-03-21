@@ -42,7 +42,6 @@ pub fn sign_extend_and_truncate(size_class: u8, value: u64) -> i64 {
 }
 
 pub fn truncate(size_class: u8, value: u64) -> u64 {
-    dbg!(size_class);
     let value_size = 1 << size_class;
     let shift_size = (8 - value_size) * 8;
     let truncated_value = value << shift_size;
@@ -72,9 +71,20 @@ pub trait Register: Sized + Copy {
 
 pub const REGISTER_CALL_ID: u8 = 0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct InReg(u8);
+
+impl fmt::Debug for InReg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let signed = if self.is_signed() { "s" } else { "u" };
+
+        let bits = 8 << self.size_class();
+        let text = format!("InReg({}{}, {:?})", signed, bits, self.id());
+
+        return write!(f, "{}", text);
+    }
+}
 
 impl InReg {
     pub const NULL: Self = Self(0);
@@ -103,9 +113,19 @@ impl Register for InReg {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct In64Reg(u8);
+
+impl fmt::Debug for In64Reg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let signed = if self.is_signed() { "s64" } else { "u64" };
+
+        let text = format!("In64Reg({}, {:?})", signed, self.id());
+
+        return write!(f, "{}", text);
+    }
+}
 
 impl In64Reg {
     pub const NULL: Self = Self(0);
@@ -129,9 +149,21 @@ impl Register for In64Reg {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Out64Reg(u8);
+
+impl fmt::Debug for Out64Reg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let signed = if self.is_signed() {
+            "signed"
+        } else {
+            "unsigned"
+        };
+
+        return write!(f, "{}", format!("Out64Reg({}, {:?})", signed, self.id()));
+    }
+}
 
 impl Out64Reg {
     pub const NULL: Self = Self(0);
@@ -155,9 +187,20 @@ impl Register for Out64Reg {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct OutReg(u8);
+
+impl fmt::Debug for OutReg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let signed = if self.is_signed() { "s" } else { "u" };
+
+        let bits = 8 << self.size_class();
+        let text = format!("OutReg({}{}, {:?})", signed, bits, self.id());
+
+        return write!(f, "{}", text);
+    }
+}
 
 impl OutReg {
     pub fn null(signed: RegSignedness, size_class: RegSize) -> Self {
@@ -310,7 +353,6 @@ impl AllocLen {
 // -    In opcodes with a len-power and len, they combine to produce a 32 bit value,
 //      using compression style from interp/memory.rs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 #[repr(align(4))]
 pub enum Opcode {
     Func, // opcode u8 u16
@@ -573,7 +615,7 @@ pub enum Opcode {
     // Register inputs are interpreted differently depending on context
     // opcode u8-ecall-type u8-register-64-input u8-register-64-input
     Ecall {
-        ecall_type: u8,
+        kind: EcallKind,
         input_1: In64Reg,
         input_2: In64Reg,
     },
@@ -585,6 +627,14 @@ pub enum Opcode {
         message_ptr: In64Reg,
         message_len: In64Reg,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum EcallKind {
+    ExitSuccess = 0,
+    Print = 1,
+    PrintNewline = 2,
 }
 
 impl From<u32> for Opcode {
@@ -599,7 +649,7 @@ impl Into<u32> for Opcode {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Ptr {
     pub offset: u32,
@@ -817,6 +867,7 @@ impl AllocTracker {
         };
 
         self.alloc_info.push(info);
+
         let alloc_info_id = self.alloc_info.len() as u32;
 
         let ptr = Ptr {
@@ -926,7 +977,7 @@ impl AllocTracker {
         }
     }
 
-    pub fn ptr<T>(&self, ptr: Ptr) -> Result<&T, IError>
+    pub fn read<T>(&self, ptr: Ptr) -> Result<T, IError>
     where
         T: Copy,
     {
@@ -935,10 +986,10 @@ impl AllocTracker {
 
         let ptr = &self.bytes[range.start] as *const u8 as *const T;
 
-        return Ok(unsafe { &*ptr });
+        return Ok(unsafe { *ptr });
     }
 
-    pub fn ptr_mut<T>(&mut self, ptr: Ptr) -> Result<&mut T, IError>
+    pub fn write<T>(&mut self, ptr: Ptr, t: T) -> Result<(), IError>
     where
         T: Copy,
     {
@@ -947,7 +998,8 @@ impl AllocTracker {
 
         let ptr = &mut self.bytes[range.start] as *mut u8 as *mut T;
 
-        return Ok(unsafe { &mut *ptr });
+        unsafe { *ptr = t };
+        return Ok(());
     }
 
     #[inline]
@@ -1008,12 +1060,12 @@ impl AllocTracker {
 
         let (start, alloc_len) = alloc_info.get_range()?;
 
-        let ptr_end = ptr.offset + len;
-        if ptr_end > alloc_len {
+        let ptr_offset_end = ptr.offset + len;
+        if ptr_offset_end > alloc_len {
             return Err(IError::new("invalid pointer"));
         }
 
-        return Ok(r(ptr.offset, ptr_end));
+        return Ok(r(start + ptr.offset, start + ptr_offset_end));
     }
 }
 

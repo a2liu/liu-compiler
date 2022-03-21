@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn simple() {
-        run_on_file("simple.liu", "12 37\n12\n");
+        run_on_file("simple.liu", "12 25 \n12 \n");
     }
 
     fn run_on_file(name: &str, expected: &str) {
@@ -97,10 +97,9 @@ mod tests {
 
         let mut assembler = Assembler::new();
 
-        assembler.assemble(&graph, entry);
+        let data = assembler.assemble(&graph, entry);
 
         let mut out = String::new();
-        let data = AllocTracker::new();
         let mut interp = Interpreter::new(data, &mut out);
         interp.run().unwrap();
 

@@ -31,6 +31,8 @@ impl<'a> Interpreter<'a> {
         loop {
             let opcode: Opcode = self.memory.read_op()?.into();
 
+            // println!("{:?}", opcode);
+
             match opcode {
                 StackAlloc { len, save_address } => {
                     let ptr = self.memory.alloc_stack_var(len)?;
@@ -65,7 +67,7 @@ impl<'a> Interpreter<'a> {
                         self.memory.write_register(id, value)?;
                     } else {
                         let ptr = self.memory.stack_slot_ptr(stack_slot)?;
-                        *self.memory.ptr_mut(ptr)? = value;
+                        self.memory.write(ptr, value)?;
                     }
 
                     self.memory.advance_pc();
@@ -77,8 +79,64 @@ impl<'a> Interpreter<'a> {
                 } => {
                     let ptr = self.memory.stack_ptr(stack_id as u32, 0)?;
 
+                    println!("MakeFp {}", stack_id);
+
                     let id = register_out.expect_id()?;
                     self.memory.write_register(id, ptr)?;
+
+                    self.memory.advance_pc();
+                }
+
+                Set { pointer, value } => {
+                    let size_class = value.size_class();
+                    let pointer: Ptr = self.memory.read_unsigned_reg(pointer)?.into();
+
+                    let value: u64 = self.memory.read_unsigned_reg(value)?.into();
+
+                    println!("set {:?} {}", pointer, value);
+
+                    match size_class {
+                        0 => self.memory.write(pointer, value as u8)?,
+                        1 => self.memory.write(pointer, value as u16)?,
+                        2 => self.memory.write(pointer, value as u32)?,
+                        3 => self.memory.write(pointer, value as u64)?,
+                        _ => {
+                            panic!("invalid size class: {}", size_class);
+                        }
+                    };
+
+                    self.memory.advance_pc();
+                }
+
+                Get {
+                    register_out,
+                    pointer,
+                } => {
+                    let pointer: Ptr = self.memory.read_unsigned_reg(pointer)?.into();
+
+                    let out_size = register_out.size_class();
+
+                    let value = match out_size {
+                        0 => self.memory.read::<u8>(pointer)? as u64,
+                        1 => self.memory.read::<u16>(pointer)? as u64,
+                        2 => self.memory.read::<u32>(pointer)? as u64,
+                        3 => self.memory.read::<u64>(pointer)? as u64,
+                        _ => {
+                            panic!("invalid size class: {}", out_size);
+                        }
+                    };
+
+                    println!("get {:?} {}", pointer, value);
+
+                    let id = register_out.expect_id()?;
+
+                    let value = if register_out.is_signed() {
+                        sign_extend_and_truncate(out_size, value) as u64
+                    } else {
+                        truncate(out_size, value) as u64
+                    };
+
+                    self.memory.write_register(id, value)?;
 
                     self.memory.advance_pc();
                 }
@@ -113,8 +171,35 @@ impl<'a> Interpreter<'a> {
                     self.memory.advance_pc();
                 }
 
+                Ecall {
+                    kind,
+                    input_1,
+                    input_2,
+                } => match kind {
+                    EcallKind::ExitSuccess => break,
+                    EcallKind::Print => {
+                        let left = self.memory.read_unsigned_reg(input_1)?;
+
+                        let err = |_| IError::new("failed to write");
+                        write!(self.out, "{} ", left).map_err(err)?;
+
+                        self.memory.advance_pc();
+                    }
+                    EcallKind::PrintNewline => {
+                        let err = |_| IError::new("failed to write");
+                        self.out.write_str("\n").map_err(err)?;
+
+                        self.memory.advance_pc();
+                    }
+
+                    #[allow(unreachable_patterns)]
+                    _ => {
+                        panic!("invalid kind {}", kind as u8);
+                    }
+                },
+
                 _ => {
-                    break;
+                    unimplemented!("{:?}", opcode);
                 }
             }
         }
@@ -216,7 +301,7 @@ mod tests {
 
         ops.push(
             Ecall {
-                ecall_type: 0,
+                kind: EcallKind::ExitSuccess,
                 input_1: In64Reg::NULL,
                 input_2: In64Reg::NULL,
             }
