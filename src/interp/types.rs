@@ -650,6 +650,10 @@ pub enum AllocInfo {
         start: u32,
         len: AllocLen,
     },
+    StaticExeLoc {
+        start: u32,
+        len: AllocLen,
+    },
 
     Static {
         creation_expr: ExprId,
@@ -666,6 +670,7 @@ impl AllocInfo {
             StackLive { start, len, .. }
             | HeapLive { start, len, .. }
             | StaticExe { start, len }
+            | StaticExeLoc { start, len }
             | Static { start, len, .. } => (start, len.len()),
 
             StackDead { creation_op } => {
@@ -690,6 +695,7 @@ pub struct BinaryManifest {
     // and do bounds checking
     pub static_exe_start: u32,
     pub static_exe_end: u32,
+    pub static_exe_loc_start: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -711,6 +717,7 @@ impl AllocTracker {
             manifest: BinaryManifest {
                 static_exe_start: 0,
                 static_exe_end: 0,
+                static_exe_loc_start: u32::MAX,
             },
         }
     }
@@ -751,18 +758,18 @@ impl AllocTracker {
         return range;
     }
 
-    pub fn alloc_exe(&mut self, op_count: u32) -> &mut [u32] {
+    pub fn alloc_exe(&mut self, exe: Pod<u32>, locs: Option<Pod<ExprId>>) {
+        use core::slice::from_raw_parts_mut;
         use AllocInfo::*;
 
+        let op_count = exe.len() as u32;
         let len = AllocLen::new(op_count * 4);
         let range = self.alloc_range(len);
 
-        let info = StaticExe {
+        self.alloc_info.push(StaticExe {
             start: range.start,
             len,
-        };
-
-        self.alloc_info.push(info);
+        });
 
         let bytes = &mut self.bytes[range];
         let pointer = bytes.as_mut_ptr() as *mut u32;
@@ -772,7 +779,29 @@ impl AllocTracker {
         self.manifest.static_exe_start = range.start;
         self.manifest.static_exe_end = range.start + op_count * 4;
 
-        return unsafe { core::slice::from_raw_parts_mut(pointer, op_count as usize) };
+        let ops = unsafe { from_raw_parts_mut(pointer, op_count as usize) };
+        ops.copy_from_slice(&*exe);
+
+        if let Some(locs) = locs {
+            assert_eq!(op_count, locs.len() as u32);
+
+            let range = self.alloc_range(len);
+
+            self.alloc_info.push(StaticExeLoc {
+                start: range.start,
+                len,
+            });
+
+            let bytes = &mut self.bytes[range];
+            let pointer = bytes.as_mut_ptr() as *mut ExprId;
+
+            debug_assert!(range.len() / 4 >= op_count);
+
+            self.manifest.static_exe_loc_start = range.start;
+
+            let locs_out = unsafe { from_raw_parts_mut(pointer, op_count as usize) };
+            locs_out.copy_from_slice(&*locs);
+        }
     }
 
     pub fn alloc_static(&mut self, len: u32, creation_expr: ExprId) -> (Ptr, u32) {

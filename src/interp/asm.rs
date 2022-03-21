@@ -2,7 +2,7 @@ use crate::*;
 
 pub struct Assembler {
     pub exe_bytes: Pod<u32>,
-    pub loc_bytes: Pod<u32>,
+    pub loc_bytes: Pod<ExprId>,
     pub current_expr: ExprId,
 }
 
@@ -19,20 +19,19 @@ impl Assembler {
         use GraphOp::*;
 
         let block = graph.blocks[entry_block];
-
         let ops = &graph.ops[block.ops];
 
-        for &op in ops {}
-
-        unimplemented!();
+        for &op in ops {
+            match op {
+                _ => {
+                    unimplemented!("{:?}", op);
+                }
+            }
+        }
     }
 
     pub fn push(&mut self, val: impl Into<u32>) {
         self.exe_bytes.push(val.into());
-
-        let bytes = unsafe { core::mem::transmute(self.current_expr) };
-        self.loc_bytes.push(bytes);
+        self.loc_bytes.push(self.current_expr);
     }
 }
-
-struct RegisterAllocator {}

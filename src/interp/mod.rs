@@ -223,7 +223,7 @@ mod tests {
             .into(),
         );
 
-        data.alloc_exe(ops.len() as u32).copy_from_slice(&ops);
+        data.alloc_exe(ops, None);
 
         let mut out = String::new();
 
