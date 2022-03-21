@@ -60,14 +60,14 @@ pub struct GraphOp {
 
 #[derive(Clone, Copy)]
 pub struct BBInfo {
-    pub ops: CopyRange,
+    pub ops: CopyRange<u32>,
     // pub is_ssa: bool,
 }
 
 pub struct Graph {
     pub ops: Pod<GraphOp>,
     pub blocks: Pod<BBInfo>,
-    current_begin: usize,
+    current_begin: u32,
 }
 
 impl Graph {
@@ -81,7 +81,7 @@ impl Graph {
 
     pub fn complete_block(&mut self) -> u32 {
         let begin = self.current_begin;
-        let end = self.ops.len();
+        let end = self.ops.len() as u32;
 
         let id = self.blocks.len() as u32;
 
@@ -93,7 +93,7 @@ impl Graph {
     }
 
     pub fn loc(&mut self, expr: ExprId) {
-        // self.ops.push(OpKind::Loc { expr });
+        // self.ops.push(GraphOpKind::Loc { expr });
     }
 
     pub fn add(&mut self, op: GraphOp) {
@@ -103,9 +103,51 @@ impl Graph {
     }
 }
 
+/*
+
+// TODO I want to make this system memory efficient, cache-friendly, and nice
+// to use as a programmer. I cannot figure out how to do that. I guess I'll
+// continue to rewrite this shit until that happens.
+//
+//                              - Albert Liu, Mar 20, 2022 Sun 21:22 EDT
+
 #[derive(Clone, Copy)]
 #[repr(transparent)]
-pub struct BlockRef(u32);
+pub struct Block(u32);
+
+impl Block {
+    pub fn new<A>(ops: Pod<GraphOp, A>) -> Self
+    where
+        A: Allocator,
+    {
+        let len = ops.len();
+        let start = GRAPH.ops_len.fetch_add(len, Ordering::SeqCst);
+
+        if start.saturating_add(len) >= GRAPH.ops_capacity as usize {
+            panic!("rippo");
+        }
+
+        let start = start as u32;
+        let len = len as u32;
+
+        let range = r(start, start + len);
+
+        let block_id = GRAPH.blocks_len.fetch_add(1, Ordering::SeqCst);
+        if block_id >= GRAPH.blocks_capacity as usize {
+            panic!("rippo");
+        }
+
+        unsafe {
+            let block = &mut *(GRAPH.blocks.add(start as usize) as *mut BlockInfo);
+
+            let range_as_u64: u64 = core::mem::transmute(range);
+
+            block.ops_data.store(range_as_u64, Ordering::SeqCst);
+        }
+
+        return Self(block_id as u32);
+    }
+}
 
 pub struct BlockInfo {
     ops_data: AtomicU64,
@@ -131,13 +173,13 @@ impl BlockInfo {
 }
 
 struct GraphAllocator {
-    ops_capacity: usize,
+    ops_capacity: u32,
     ops: *const GraphOp,
     ops_len: AtomicUsize,
 
     free_block: u32,
 
-    blocks_capacity: usize,
+    blocks_capacity: u32,
     blocks: *const BlockInfo,
     blocks_len: AtomicUsize,
 }
@@ -165,3 +207,4 @@ lazy_static! {
         }
     };
 }
+*/
