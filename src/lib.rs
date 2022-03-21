@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn simple() {
-        run_on_file("simple.liu", "12 25 \n12 \n");
+        run_on_file("simple.liu", "69 73 \n69 8491 \n");
     }
 
     fn run_on_file(name: &str, expected: &str) {

@@ -1,9 +1,9 @@
-let a = 12
-let b = a + 13
+let a = 69
+let b = a + 8422
 
 {
-    let b = a + 13
+    let b = a + 4
     print(a,b,)
 }
 
-print(a)
+print(a, b,)
