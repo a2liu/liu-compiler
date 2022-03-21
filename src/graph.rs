@@ -117,9 +117,16 @@ impl BlockInfo {
         let data = self.ops_data.load(Ordering::SeqCst);
 
         let range: CopyRange<u32> = unsafe { core::mem::transmute(data) };
+        let len = range.end - range.start;
 
-        // TODO
-        return &[];
+        let ops = GRAPH.ops as *mut GraphOp;
+
+        unsafe {
+            let ops = ops.add(range.start as usize);
+            let ops = core::slice::from_raw_parts(ops, len as usize);
+
+            return ops;
+        }
     }
 }
 
