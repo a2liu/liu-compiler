@@ -41,6 +41,7 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
         vars: HashMap::new(),
         kind: ScopeKind::Global {
             next_variable_id: Cell::new(0),
+            next_register_id: Cell::new(1),
         },
     };
 
@@ -126,6 +127,7 @@ impl<'a> CheckEnv<'a> {
                 kind: ScopeKind::Procedure {
                     parent: &mut self.scope,
                     next_variable_id: Cell::new(0),
+                    next_register_id: Cell::new(0),
                 },
                 vars: HashMap::new(),
             },
@@ -362,10 +364,12 @@ struct Arm {
 enum ScopeKind<'a> {
     Global {
         next_variable_id: Cell<u16>,
+        next_register_id: Cell<u32>,
     },
     Procedure {
         parent: &'a ScopeEnv<'a>,
         next_variable_id: Cell<u16>,
+        next_register_id: Cell<u32>,
     },
     Local {
         parent: &'a ScopeEnv<'a>,
@@ -391,6 +395,30 @@ impl<'a> ScopeEnv<'a> {
             ScopeKind::Procedure { parent, .. } => Some(parent),
             ScopeKind::Local { parent } => Some(parent),
         };
+    }
+
+    fn register_id(&self) -> u32 {
+        let mut current = self;
+
+        loop {
+            let next_register_id = match &current.kind {
+                ScopeKind::Procedure {
+                    next_register_id, ..
+                } => next_register_id,
+                ScopeKind::Global {
+                    next_register_id, ..
+                } => next_register_id,
+                ScopeKind::Local { parent, .. } => {
+                    current = parent;
+                    continue;
+                }
+            };
+
+            let op = next_register_id.get();
+            next_register_id.set(op + 1);
+
+            return op;
+        }
     }
 
     fn search(&self, symbol: u32) -> Option<VariableInfo> {
@@ -434,7 +462,9 @@ impl<'a> ScopeEnv<'a> {
                     next_variable_id, ..
                 } => next_variable_id,
 
-                ScopeKind::Global { next_variable_id } => next_variable_id,
+                ScopeKind::Global {
+                    next_variable_id, ..
+                } => next_variable_id,
             };
 
             let id = next.get();
