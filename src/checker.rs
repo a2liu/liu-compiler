@@ -11,7 +11,7 @@ pub enum Type {
     // Void in C
     Null,
 
-    Unsigned,
+    U64,
     String,
 
     Procedure,
@@ -131,6 +131,8 @@ impl<'a> CheckEnv<'a> {
                 Procedure(p) => p,
                 _ => continue,
             };
+
+            unimplemented!("procedures aren't implemented yet");
         }
 
         for expr in block.stmts {
@@ -165,7 +167,7 @@ impl<'a> CheckEnv<'a> {
                     value,
                 });
 
-                return Ok(Value::new(op, Type::Unsigned));
+                return Ok(Value::new(op, Type::U64));
             }
 
             Let { symbol, value } => {
@@ -203,6 +205,37 @@ impl<'a> CheckEnv<'a> {
                 });
 
                 return Ok(Value::new(op, var_info.ty));
+            }
+
+            If { cond, if_true } => {
+                let end_block = self.graph.graph.get_block_id();
+
+                // let value = self.check_arms(end_block, &[if_true])?;
+
+                // assert_eq!(self.graph.ops.len(), 0);
+                // let ops = core::mem::replace(&mut self.graph.ops, Pod::new());
+                // self.graph.graph.write_block(self.graph.block_id, ops);
+                // self.graph.block_id = end_block;
+
+                // return Ok(value);
+                return Ok(NULL);
+            }
+
+            IfElse {
+                cond,
+                if_true,
+                if_false,
+            } => {
+                let end_block = self.graph.graph.get_block_id();
+
+                // let value = self.check_arms(end_block, &[if_true, if_false])?;
+
+                // assert_eq!(self.graph.ops.len(), 0);
+                // let ops = core::mem::replace(&mut self.graph.ops, Pod::new());
+                // self.graph.graph.write_block(self.graph.block_id, ops);
+                // self.graph.block_id = end_block;
+
+                return Ok(NULL);
             }
 
             BinaryOp { kind, left, right } => {
@@ -269,6 +302,23 @@ impl<'a> CheckEnv<'a> {
             k => unimplemented!("{}", k.name()),
         }
     }
+
+    // Completes the current block properly, and also completes all the blocks
+    // it produces by having them jump to the exit block
+    fn check_arms(&mut self, exit_block: u32, arms: &[Arm]) -> Result<Value, Error> {
+        let parent = self.graph.block_id;
+
+        let mut pod = Pod::new();
+
+        pod.push(1);
+
+        return Ok(NULL);
+    }
+}
+
+struct Arm {
+    block_id: u32,
+    expr: ExprId,
 }
 
 enum ScopeKind<'a> {
