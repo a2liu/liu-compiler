@@ -47,8 +47,7 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
     let mut graph = Graph::new();
     let entry = graph.get_block_id();
 
-    let mut graph = GraphAppend {
-        graph,
+    let mut append = GraphAppend {
         block_id: entry,
         ops: Pod::new(),
 
@@ -61,6 +60,7 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
     let mut env = CheckEnv {
         types: &mut types,
         graph: &mut graph,
+        append: &mut append,
         scope,
     };
 
@@ -68,9 +68,8 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
         env.check_expr(expr)?;
     }
 
-    let mut ops = graph.ops;
-    let last = graph.block_id;
-    let mut graph = graph.graph;
+    let mut ops = append.ops;
+    let last = append.block_id;
 
     ops.push(GraphOp::Loc(ExprId::NULL));
     ops.push(GraphOp::ExitSuccess);
@@ -83,7 +82,6 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
 pub struct TypeEnv {}
 
 struct GraphAppend {
-    graph: Graph,
     block_id: u32,
     op_id: u32,
     ops: Pod<GraphOp>,
@@ -91,7 +89,8 @@ struct GraphAppend {
 
 struct CheckEnv<'a> {
     types: &'a mut TypeEnv,
-    graph: &'a mut GraphAppend,
+    graph: &'a mut Graph,
+    append: &'a mut GraphAppend,
     scope: ScopeEnv<'a>,
 }
 
@@ -100,6 +99,7 @@ impl<'a> CheckEnv<'a> {
         return CheckEnv {
             types: self.types,
             graph: self.graph,
+            append: self.append,
             scope: ScopeEnv {
                 kind: ScopeKind::Local {
                     parent: &mut self.scope,
@@ -113,6 +113,7 @@ impl<'a> CheckEnv<'a> {
         return CheckEnv {
             types: self.types,
             graph: self.graph,
+            append: self.append,
             scope: ScopeEnv {
                 kind: ScopeKind::Procedure {
                     parent: &mut self.scope,
@@ -157,12 +158,12 @@ impl<'a> CheckEnv<'a> {
             }
 
             Integer(value) => {
-                self.graph.ops.push(GraphOp::Loc(id));
+                self.append.ops.push(GraphOp::Loc(id));
 
-                let op = self.graph.op_id;
-                self.graph.op_id += 1;
+                let op = self.append.op_id;
+                self.append.op_id += 1;
 
-                self.graph.ops.push(GraphOp::ConstantU64 {
+                self.append.ops.push(GraphOp::ConstantU64 {
                     output_id: op,
                     value,
                 });
@@ -175,9 +176,9 @@ impl<'a> CheckEnv<'a> {
 
                 let stack_id = self.scope.declare(id, symbol, result.ty)?;
 
-                self.graph.ops.push(GraphOp::Loc(id));
-                self.graph.ops.push(GraphOp::StackVar { size: 8 });
-                self.graph.ops.push(GraphOp::StoreStack64 {
+                self.append.ops.push(GraphOp::Loc(id));
+                self.append.ops.push(GraphOp::StackVar { size: 8 });
+                self.append.ops.push(GraphOp::StoreStack64 {
                     stack_id,
                     offset: 0,
                     input_id: result.op,
@@ -194,11 +195,11 @@ impl<'a> CheckEnv<'a> {
                     }
                 };
 
-                let op = self.graph.op_id;
-                self.graph.op_id += 1;
+                let op = self.append.op_id;
+                self.append.op_id += 1;
 
-                self.graph.ops.push(GraphOp::Loc(id));
-                self.graph.ops.push(GraphOp::LoadStack64 {
+                self.append.ops.push(GraphOp::Loc(id));
+                self.append.ops.push(GraphOp::LoadStack64 {
                     output_id: op,
                     stack_id: var_info.id,
                     offset: 0,
@@ -208,7 +209,7 @@ impl<'a> CheckEnv<'a> {
             }
 
             If { cond, if_true } => {
-                let end_block = self.graph.graph.get_block_id();
+                let end_block = self.graph.get_block_id();
 
                 // let value = self.check_arms(end_block, &[if_true])?;
 
@@ -226,7 +227,7 @@ impl<'a> CheckEnv<'a> {
                 if_true,
                 if_false,
             } => {
-                let end_block = self.graph.graph.get_block_id();
+                let end_block = self.graph.get_block_id();
 
                 // let value = self.check_arms(end_block, &[if_true, if_false])?;
 
@@ -249,11 +250,11 @@ impl<'a> CheckEnv<'a> {
                     ));
                 }
 
-                let op = self.graph.op_id;
-                self.graph.op_id += 1;
+                let op = self.append.op_id;
+                self.append.op_id += 1;
 
-                self.graph.ops.push(GraphOp::Loc(id));
-                self.graph.ops.push(GraphOp::Add64 {
+                self.append.ops.push(GraphOp::Loc(id));
+                self.append.ops.push(GraphOp::Add64 {
                     out: op,
                     op1: left_value.op,
                     op2: right_value.op,
@@ -289,12 +290,12 @@ impl<'a> CheckEnv<'a> {
                 for arg in args {
                     let value = self.check_expr(arg)?;
 
-                    self.graph.ops.push(GraphOp::Loc(id));
-                    self.graph.ops.push(GraphOp::BuiltinPrint { op: value.op });
+                    self.append.ops.push(GraphOp::Loc(id));
+                    self.append.ops.push(GraphOp::BuiltinPrint { op: value.op });
                 }
 
-                self.graph.ops.push(GraphOp::Loc(id));
-                self.graph.ops.push(GraphOp::BuiltinNewline);
+                self.append.ops.push(GraphOp::Loc(id));
+                self.append.ops.push(GraphOp::BuiltinNewline);
 
                 return Ok(NULL);
             }
@@ -306,7 +307,7 @@ impl<'a> CheckEnv<'a> {
     // Completes the current block properly, and also completes all the blocks
     // it produces by having them jump to the exit block
     fn check_arms(&mut self, exit_block: u32, arms: &[Arm]) -> Result<Value, Error> {
-        let parent = self.graph.block_id;
+        let parent = self.append.block_id;
 
         let mut pod = Pod::new();
 
