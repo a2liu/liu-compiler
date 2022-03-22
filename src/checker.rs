@@ -68,6 +68,8 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
         env.check_expr(expr)?;
     }
 
+    core::mem::drop(env);
+
     let mut ops = append.ops;
     let last = append.block_id;
 
@@ -83,8 +85,10 @@ pub struct TypeEnv {}
 
 struct GraphAppend {
     block_id: u32,
-    op_id: u32,
     ops: Pod<GraphOp>,
+
+    // TODO move op_id to the procedure i guess?
+    op_id: u32,
 }
 
 struct CheckEnv<'a> {
@@ -92,6 +96,10 @@ struct CheckEnv<'a> {
     graph: &'a mut Graph,
     append: &'a mut GraphAppend,
     scope: ScopeEnv<'a>,
+}
+
+impl<'a> Drop for CheckEnv<'a> {
+    fn drop(&mut self) {}
 }
 
 impl<'a> CheckEnv<'a> {
@@ -122,6 +130,35 @@ impl<'a> CheckEnv<'a> {
                 vars: HashMap::new(),
             },
         };
+    }
+
+    fn chain_branch<'b>(&'b mut self, append: &'b mut GraphAppend) -> CheckEnv<'b> {
+        return CheckEnv {
+            types: self.types,
+            graph: self.graph,
+            append,
+            scope: ScopeEnv {
+                kind: ScopeKind::Local {
+                    parent: &mut self.scope,
+                },
+                vars: HashMap::new(),
+            },
+        };
+    }
+
+    fn complete_block(&mut self) {
+        let block_id = self.graph.get_block_id();
+
+        self.replace_block(GraphAppend {
+            block_id,
+            ops: Pod::new(),
+            op_id: 0,
+        });
+    }
+
+    fn replace_block(&mut self, append: GraphAppend) {
+        let append = core::mem::replace(self.append, append);
+        self.graph.write_block(append.block_id, append.ops);
     }
 
     fn check_block(&mut self, block: &Block) -> Result<Value, Error> {
