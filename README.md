@@ -105,10 +105,19 @@ its backend.
 ## Intended Architecture
 ### NOTE: NONE OF THIS IS IMPLEMENTED
 
-Bytecode memory layout:
+`GraphOp` memory layout:
 -   Global garbage collector manages basic block lifetimes/allocations
--   Once data is written it's read-only, rewriters write new basic blocks and
-    write to a global ID table
+-   Once data is written it's read-only, optimizer passes write new basic blocks
+    and write to a global ID table
+-   passes take mutation mutex on functions, do their stuff, then re-add
+    function with new blocks back to database
+-   How does inlining work? Inlining requires reading the function, so I guess
+    it requires the mutex? I guess we want the data from the inline to be closer
+    to optimal
+-   GC also takes mutation mutex to do moving GC in the global ring buffer
+-   Make MPSC queue for GC references, so they can be moved as needed
+-   Write some kind of parking lot thing to work with tasks
+-   Mutexes can't really be moved while locked, so... what do?
 
 lexing/parsing -> one global lexer thread, X parser threads
 
@@ -130,5 +139,5 @@ checking -> one global type database/thread, AST checking done by multiple threa
 
 
 Write job system + allocator
-Use the idea of Cancellation Token to allow for task cancellation
+Use the idea of Cancellation Token to allow for task cancellation?
 
