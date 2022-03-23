@@ -39,13 +39,11 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
 
     let mut scope = ScopeEnv {
         vars: HashMap::new(),
-        kind: ScopeKind::Global {
-            next_variable_id: Cell::new(0),
-            next_register_id: Cell::new(1),
-        },
+        kind: ScopeKind::Global {},
     };
 
     let mut graph = Graph::new();
+    let mut ids = IdTracker::new();
     let entry = graph.get_block_id();
 
     let mut append = GraphAppend {
@@ -61,6 +59,7 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
     let mut env = CheckEnv {
         types: &mut types,
         graph: &mut graph,
+        ids: &mut ids,
         append: &mut append,
         scope,
     };
@@ -95,6 +94,7 @@ struct GraphAppend {
 struct CheckEnv<'a> {
     types: &'a mut TypeEnv,
     graph: &'a mut Graph,
+    ids: &'a mut IdTracker,
     append: &'a mut GraphAppend,
     scope: ScopeEnv<'a>,
 }
@@ -104,65 +104,6 @@ impl<'a> Drop for CheckEnv<'a> {
 }
 
 impl<'a> CheckEnv<'a> {
-    fn chain_local<'b>(&'b mut self) -> CheckEnv<'b> {
-        return CheckEnv {
-            types: self.types,
-            graph: self.graph,
-            append: self.append,
-            scope: ScopeEnv {
-                kind: ScopeKind::Local {
-                    parent: &mut self.scope,
-                },
-                vars: HashMap::new(),
-            },
-        };
-    }
-
-    fn chain_proc<'b>(&'b mut self) -> CheckEnv<'b> {
-        return CheckEnv {
-            types: self.types,
-            graph: self.graph,
-            append: self.append,
-            scope: ScopeEnv {
-                kind: ScopeKind::Procedure {
-                    parent: &mut self.scope,
-                    next_variable_id: Cell::new(0),
-                    next_register_id: Cell::new(0),
-                },
-                vars: HashMap::new(),
-            },
-        };
-    }
-
-    fn chain_branch<'b>(&'b mut self, append: &'b mut GraphAppend) -> CheckEnv<'b> {
-        return CheckEnv {
-            types: self.types,
-            graph: self.graph,
-            append,
-            scope: ScopeEnv {
-                kind: ScopeKind::Local {
-                    parent: &mut self.scope,
-                },
-                vars: HashMap::new(),
-            },
-        };
-    }
-
-    fn complete_block(&mut self) {
-        let block_id = self.graph.get_block_id();
-
-        self.replace_block(GraphAppend {
-            block_id,
-            ops: Pod::new(),
-            op_id: 0,
-        });
-    }
-
-    fn replace_block(&mut self, append: GraphAppend) {
-        let append = core::mem::replace(self.append, append);
-        self.graph.write_block(append.block_id, append.ops);
-    }
-
     fn check_block(&mut self, block: &Block) -> Result<Value, Error> {
         use ExprKind::*;
 
@@ -189,7 +130,8 @@ impl<'a> CheckEnv<'a> {
 
         match *expr {
             Procedure(p) => {
-                let mut proc_child = self.chain_proc();
+                let mut ids = IdTracker::new();
+                let mut proc_child = self.chain_proc(&mut ids);
 
                 let result = proc_child.check_expr(p.code)?;
 
@@ -213,7 +155,7 @@ impl<'a> CheckEnv<'a> {
             Let { symbol, value } => {
                 let result = self.check_expr(value)?;
 
-                let stack_id = self.scope.declare(id, symbol, result.ty)?;
+                let stack_id = self.declare(id, symbol, result.ty)?;
 
                 self.append.ops.push(GraphOp::Loc(id));
                 self.append.ops.push(GraphOp::StackVar { size: 8 });
@@ -227,7 +169,7 @@ impl<'a> CheckEnv<'a> {
             }
 
             Ident { symbol } => {
-                let var_info = match self.scope.search(symbol) {
+                let var_info = match self.search(symbol) {
                     Some(e) => e,
                     None => {
                         return Err(Error::new("couldn't find variable", id.loc()));
@@ -354,6 +296,109 @@ impl<'a> CheckEnv<'a> {
 
         return Ok(NULL);
     }
+
+    fn chain_local<'b>(&'b mut self) -> CheckEnv<'b> {
+        return CheckEnv {
+            types: self.types,
+            graph: self.graph,
+            ids: self.ids,
+            append: self.append,
+            scope: ScopeEnv {
+                kind: ScopeKind::Local {
+                    parent: &mut self.scope,
+                },
+                vars: HashMap::new(),
+            },
+        };
+    }
+
+    fn chain_proc<'b>(&'b mut self, ids: &'b mut IdTracker) -> CheckEnv<'b> {
+        return CheckEnv {
+            types: self.types,
+            graph: self.graph,
+            ids,
+            append: self.append,
+            scope: ScopeEnv {
+                kind: ScopeKind::Procedure {
+                    parent: &mut self.scope,
+                },
+                vars: HashMap::new(),
+            },
+        };
+    }
+
+    fn chain_branch<'b>(&'b mut self, append: &'b mut GraphAppend) -> CheckEnv<'b> {
+        return CheckEnv {
+            types: self.types,
+            graph: self.graph,
+            ids: self.ids,
+            append,
+            scope: ScopeEnv {
+                kind: ScopeKind::Local {
+                    parent: &mut self.scope,
+                },
+                vars: HashMap::new(),
+            },
+        };
+    }
+
+    fn complete_block(&mut self) {
+        let block_id = self.graph.get_block_id();
+
+        self.replace_block(GraphAppend {
+            block_id,
+            ops: Pod::new(),
+            op_id: 0,
+        });
+    }
+
+    fn replace_block(&mut self, append: GraphAppend) {
+        let append = core::mem::replace(self.append, append);
+        self.graph.write_block(append.block_id, append.ops);
+    }
+
+    fn search(&self, symbol: u32) -> Option<VariableInfo> {
+        let mut current = &self.scope;
+
+        loop {
+            if let Some(e) = current.vars.get(&symbol) {
+                return Some(*e);
+            }
+
+            if let Some(parent) = current.parent() {
+                current = parent;
+
+                continue;
+            }
+
+            return None;
+        }
+    }
+
+    fn declare(&mut self, id: ExprId, symbol: u32, ty: Type) -> Result<u16, Error> {
+        use std::collections::hash_map::Entry;
+
+        let e = match self.scope.vars.entry(symbol) {
+            Entry::Vacant(v) => v,
+            Entry::Occupied(o) => {
+                return Err(Error::new("redeclared variable", id.loc()));
+            }
+        };
+
+        let id = self.ids.next_variable_id;
+        self.ids.next_variable_id += 1;
+
+        e.insert(VariableInfo { id, ty });
+
+        return Ok(id);
+    }
+
+    fn register_id(&mut self) -> u32 {
+        let id = self.ids.next_op_id;
+        self.ids.next_op_id += 1;
+
+        return id;
+    }
 }
 
 struct Arm {
@@ -362,18 +407,9 @@ struct Arm {
 }
 
 enum ScopeKind<'a> {
-    Global {
-        next_variable_id: Cell<u16>,
-        next_register_id: Cell<u32>,
-    },
-    Procedure {
-        parent: &'a ScopeEnv<'a>,
-        next_variable_id: Cell<u16>,
-        next_register_id: Cell<u32>,
-    },
-    Local {
-        parent: &'a ScopeEnv<'a>,
-    },
+    Global {},
+    Procedure { parent: &'a ScopeEnv<'a> },
+    Local { parent: &'a ScopeEnv<'a> },
 }
 
 #[derive(Clone, Copy)]
@@ -396,83 +432,18 @@ impl<'a> ScopeEnv<'a> {
             ScopeKind::Local { parent } => Some(parent),
         };
     }
+}
 
-    fn register_id(&self) -> u32 {
-        let mut current = self;
+struct IdTracker {
+    next_variable_id: u16,
+    next_op_id: u32,
+}
 
-        loop {
-            let next_register_id = match &current.kind {
-                ScopeKind::Procedure {
-                    next_register_id, ..
-                } => next_register_id,
-                ScopeKind::Global {
-                    next_register_id, ..
-                } => next_register_id,
-                ScopeKind::Local { parent, .. } => {
-                    current = parent;
-                    continue;
-                }
-            };
-
-            let op = next_register_id.get();
-            next_register_id.set(op + 1);
-
-            return op;
-        }
-    }
-
-    fn search(&self, symbol: u32) -> Option<VariableInfo> {
-        let mut current = self;
-
-        loop {
-            if let Some(e) = current.vars.get(&symbol) {
-                return Some(*e);
-            }
-
-            if let Some(parent) = current.parent() {
-                current = parent;
-
-                continue;
-            }
-
-            return None;
-        }
-    }
-
-    fn declare(&mut self, id: ExprId, symbol: u32, ty: Type) -> Result<u16, Error> {
-        use std::collections::hash_map::Entry;
-
-        let e = match self.vars.entry(symbol) {
-            Entry::Vacant(v) => v,
-            Entry::Occupied(o) => {
-                return Err(Error::new("redeclared variable", id.loc()));
-            }
+impl IdTracker {
+    fn new() -> Self {
+        return Self {
+            next_variable_id: 0,
+            next_op_id: 1,
         };
-
-        let mut current = &self.kind;
-
-        loop {
-            let next = match current {
-                ScopeKind::Local { parent } => {
-                    current = &parent.kind;
-                    continue;
-                }
-
-                ScopeKind::Procedure {
-                    next_variable_id, ..
-                } => next_variable_id,
-
-                ScopeKind::Global {
-                    next_variable_id, ..
-                } => next_variable_id,
-            };
-
-            let id = next.get();
-            next.set(id + 1);
-
-            e.insert(VariableInfo { id, ty });
-
-            return Ok(id);
-        }
     }
 }
