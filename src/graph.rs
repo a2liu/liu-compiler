@@ -93,6 +93,11 @@ impl Graph {
     }
 }
 
+#[test]
+fn sizing() {
+    assert_eq!(core::mem::size_of::<GraphOp>(), 16);
+}
+
 /*
 
 // TODO I want to make this system memory efficient, cache-friendly, and nice
