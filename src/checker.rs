@@ -49,11 +49,6 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
     let mut append = GraphAppend {
         block_id: entry,
         ops: Pod::new(),
-
-        // Making this start at 1 makes register allocation easier, and doesn't have
-        // any real ramifications long term.
-        //                              - Albert Liu, Mar 21, 2022 Mon 01:21 EDT
-        op_id: 1,
     };
 
     let mut env = CheckEnv {
@@ -86,9 +81,6 @@ pub struct TypeEnv {}
 struct GraphAppend {
     block_id: u32,
     ops: Pod<GraphOp>,
-
-    // TODO move op_id to the procedure i guess?
-    op_id: u32,
 }
 
 struct CheckEnv<'a> {
@@ -141,8 +133,7 @@ impl<'a> CheckEnv<'a> {
             Integer(value) => {
                 self.append.ops.push(GraphOp::Loc(id));
 
-                let op = self.append.op_id;
-                self.append.op_id += 1;
+                let op = self.register_id();
 
                 self.append.ops.push(GraphOp::ConstantU64 {
                     output_id: op,
@@ -176,8 +167,7 @@ impl<'a> CheckEnv<'a> {
                     }
                 };
 
-                let op = self.append.op_id;
-                self.append.op_id += 1;
+                let op = self.register_id();
 
                 self.append.ops.push(GraphOp::Loc(id));
                 self.append.ops.push(GraphOp::LoadStack64 {
@@ -231,8 +221,7 @@ impl<'a> CheckEnv<'a> {
                     ));
                 }
 
-                let op = self.append.op_id;
-                self.append.op_id += 1;
+                let op = self.register_id();
 
                 self.append.ops.push(GraphOp::Loc(id));
                 self.append.ops.push(GraphOp::Add64 {
@@ -348,7 +337,6 @@ impl<'a> CheckEnv<'a> {
         self.replace_block(GraphAppend {
             block_id,
             ops: Pod::new(),
-            op_id: 0,
         });
     }
 
