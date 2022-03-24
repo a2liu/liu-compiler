@@ -3,3 +3,7 @@
 
 # Output of random tests during development
 a.out
+
+# Random tests during development
+test.c
+test.cpp

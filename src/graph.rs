@@ -52,6 +52,7 @@ pub enum GraphOp {
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct BBInfo {
     pub ops: CopyRange<u32>,
     // pub is_ssa: bool,

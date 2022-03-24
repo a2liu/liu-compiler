@@ -105,9 +105,14 @@ its backend.
 ## Intended Architecture
 ### NOTE: NONE OF THIS IS IMPLEMENTED
 
-`GraphOp` memory layout:
+
+`GraphOp` memory layout v1:
+-   Global allocator bump allocates graph
+-   Graph blocks are static, and just reference each other + functions directly
+
+`GraphOp` memory layout v2:
 -   Global garbage collector manages basic block lifetimes/allocations
--   Once data is written it's read-only, optimizer passes write new basic blocks
+-   Once data is written it's read-only, optimization passes write new basic blocks
     and write to a global ID table
 -   passes take mutation mutex on functions, do their stuff, then re-add
     function with new blocks back to database

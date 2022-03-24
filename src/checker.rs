@@ -418,7 +418,6 @@ struct VariableInfo {
     ty: Type,
 }
 
-// eventually this will be chaining
 struct ScopeEnv<'a> {
     kind: ScopeKind<'a>,
     vars: HashMap<u32, VariableInfo>,
