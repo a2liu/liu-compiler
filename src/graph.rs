@@ -23,6 +23,9 @@ pub enum GraphOp {
         // id: u32,
         size: u32,
     },
+    StackDealloc {
+        count: u16,
+    },
 
     LoadStack64 {
         output_id: u32,

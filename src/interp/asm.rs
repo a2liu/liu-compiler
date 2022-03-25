@@ -34,6 +34,9 @@ impl Assembler {
                         save_address: Out64Reg::NULL,
                     });
                 }
+                StackDealloc { count } => {
+                    self.push(Opcode::StackDealloc { count });
+                }
 
                 ConstantU64 { output_id, value } => {
                     self.push(Opcode::Make64 {

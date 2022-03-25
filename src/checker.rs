@@ -92,7 +92,12 @@ struct CheckEnv<'a> {
 }
 
 impl<'a> Drop for CheckEnv<'a> {
-    fn drop(&mut self) {}
+    fn drop(&mut self) {
+        self.append.ops.push(GraphOp::Loc(ExprId::NULL));
+
+        let count = self.scope.vars.len() as u16;
+        self.append.ops.push(GraphOp::StackDealloc { count });
+    }
 }
 
 impl<'a> CheckEnv<'a> {
@@ -182,7 +187,15 @@ impl<'a> CheckEnv<'a> {
             If { cond, if_true } => {
                 let end_block = self.graph.get_block_id();
 
-                // let value = self.check_arms(end_block, &[if_true])?;
+                let var_id = self.reserve_var_id();
+
+                let if_true_block_id = self.graph.get_block_id();
+                let if_true_arm = Arm {
+                    block_id: if_true_block_id,
+                    expr: if_true,
+                };
+
+                let value = self.check_arms(var_id, end_block, &[if_true_arm])?;
 
                 // assert_eq!(self.graph.ops.len(), 0);
                 // let ops = core::mem::replace(&mut self.graph.ops, Pod::new());
@@ -276,12 +289,21 @@ impl<'a> CheckEnv<'a> {
 
     // Completes the current block properly, and also completes all the blocks
     // it produces by having them jump to the exit block
-    fn check_arms(&mut self, exit_block: u32, arms: &[Arm]) -> Result<Value, Error> {
-        let parent = self.append.block_id;
+    fn check_arms(
+        &mut self,
+        var_target: u16,
+        exit_block: u32,
+        arms: &[Arm],
+    ) -> Result<Value, Error> {
+        for &arm in arms {
+            let mut append = GraphAppend {
+                block_id: arm.block_id,
+                ops: Pod::new(),
+            };
 
-        let mut pod = Pod::new();
-
-        pod.push(1);
+            let mut branch = self.chain_branch(&mut append);
+            branch.check_expr(arm.expr)?;
+        }
 
         return Ok(NULL);
     }
@@ -381,6 +403,13 @@ impl<'a> CheckEnv<'a> {
         return Ok(id);
     }
 
+    fn reserve_var_id(&mut self) -> u16 {
+        let id = self.ids.next_variable_id;
+        self.ids.next_variable_id += 1;
+
+        return id;
+    }
+
     fn register_id(&mut self) -> u32 {
         let id = self.ids.next_op_id;
         self.ids.next_op_id += 1;
@@ -389,6 +418,7 @@ impl<'a> CheckEnv<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Arm {
     block_id: u32,
     expr: ExprId,
