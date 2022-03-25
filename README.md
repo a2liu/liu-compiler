@@ -90,6 +90,8 @@ its backend.
   layout, and do a different thing on it depending on some compile-time constraints.
   I want to be sure that the type doesn't cause generation of a bunch of unnecessary
   code, but that the compile-time constraints are kept constant.
+- Try to keep base language to only things that affect runtime semantics,
+  correctness typechecking checking can be done with metaprogramming
 
 ## Too Complex, use compiler API
 - Python ABI

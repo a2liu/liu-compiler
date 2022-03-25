@@ -22,6 +22,7 @@ impl Assembler {
         let ops = &graph.ops[block.ops];
 
         for &op in ops {
+            /*
             match op {
                 Loc(id) => {
                     self.current_expr = id;
@@ -130,6 +131,8 @@ impl Assembler {
                     unimplemented!("{:?}", op);
                 }
             }
+
+            */
         }
 
         let mut binary = AllocTracker::new();

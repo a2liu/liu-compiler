@@ -2,21 +2,6 @@ use crate::*;
 use core::cell::Cell;
 use std::collections::hash_map::HashMap;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Type {
-    // Means that the expression that returns this value doesn't ever return
-    // a value directly (early return, loop forever, crash, ...)
-    Never,
-
-    // Void in C
-    Null,
-
-    U64,
-    String,
-
-    Procedure,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct Value {
     pub op: u32,

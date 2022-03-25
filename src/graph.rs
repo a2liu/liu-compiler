@@ -3,6 +3,36 @@ use core::cell::*;
 use core::mem::*;
 use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Type {
+    // Means that the expression that returns this value doesn't ever return
+    // a value directly (early return, loop forever, crash, ...)
+    Never,
+
+    // Void in C
+    Null,
+
+    U64,
+    String,
+
+    Procedure,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Operand {
+    StackLocal { id: u16 },
+    Temporary { id: u16 },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum GraphOpKind {}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GraphOpMerp {
+    pub kind: GraphOpKind,
+    pub ty: Type,
+}
+
 // bruh, idk what the deal is. idk what kind of system to use here. we'll figure
 // it out later ig.
 
