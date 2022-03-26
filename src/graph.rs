@@ -21,21 +21,61 @@ pub enum Type {
 #[derive(Debug, Clone, Copy)]
 pub enum Operand {
     StackLocal { id: u16 },
-    Temporary { id: u16 },
+    Value { id: u16 },
+    Null,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum GraphOpKind {}
+pub enum GraphOpKind {
+    Declare(Operand),
+    ValueDealloc {
+        id: u16,
+    },
+    StackDealloc {
+        count: u16,
+    },
+
+    Mov {
+        target: Operand,
+        source: Operand,
+    },
+
+    ConstantU64 {
+        target: Operand,
+        value: u64,
+    },
+
+    Add {
+        target: Operand,
+        left: Operand,
+        right: Operand,
+    },
+
+    Print {
+        value: Operand,
+    },
+    PrintNewline,
+
+    ExitSuccess,
+}
 
 #[derive(Debug, Clone, Copy)]
-pub struct GraphOpMerp {
+pub struct GraphOp {
     pub kind: GraphOpKind,
     pub ty: Type,
+    pub expr: ExprId,
 }
 
-// bruh, idk what the deal is. idk what kind of system to use here. we'll figure
-// it out later ig.
+impl GraphOp {
+    pub fn new(kind: GraphOpKind, ty: Type, expr: ExprId) -> Self {
+        return Self { kind, ty, expr };
+    }
+}
 
+// bruh, idk what the deal is. idk what kind of system to use here. we'll
+// figure it out later ig.
+
+/*
 #[derive(Debug, Clone, Copy)]
 pub enum GraphOp {
     Loc(ExprId),
@@ -83,6 +123,7 @@ pub enum GraphOp {
     // Control flow
     ExitSuccess,
 }
+*/
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -129,7 +170,7 @@ impl Graph {
 
 #[test]
 fn sizing() {
-    assert_eq!(core::mem::size_of::<GraphOp>(), 16);
+    assert_eq!(core::mem::size_of::<GraphOp>(), 24);
 }
 
 /*

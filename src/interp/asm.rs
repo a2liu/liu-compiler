@@ -16,7 +16,7 @@ impl Assembler {
     }
 
     pub fn assemble(mut self, graph: &Graph, entry_block: u32) -> AllocTracker {
-        use GraphOp::*;
+        use GraphOpKind::*;
 
         let block = graph.blocks[entry_block];
         let ops = &graph.ops[block.ops];

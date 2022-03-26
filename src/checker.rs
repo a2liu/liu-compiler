@@ -4,18 +4,18 @@ use std::collections::hash_map::HashMap;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Value {
-    pub op: u32,
+    pub op: Operand,
     pub ty: Type,
 }
 
 impl Value {
-    pub fn new(op: u32, ty: Type) -> Value {
+    pub fn new(op: Operand, ty: Type) -> Value {
         return Value { op, ty };
     }
 }
 
 const NULL: Value = Value {
-    op: u32::MAX,
+    op: Operand::Null,
     ty: Type::Null,
 };
 
@@ -53,8 +53,8 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
     let mut ops = append.ops;
     let last = append.block_id;
 
-    ops.push(GraphOp::Loc(ExprId::NULL));
-    ops.push(GraphOp::ExitSuccess);
+    let op = GraphOp::new(GraphOpKind::ExitSuccess, Type::Null, ExprId::NULL);
+    ops.push(op);
 
     graph.write_block(last, ops);
 
@@ -76,14 +76,14 @@ struct CheckEnv<'a> {
     scope: ScopeEnv<'a>,
 }
 
-impl<'a> Drop for CheckEnv<'a> {
-    fn drop(&mut self) {
-        self.append.ops.push(GraphOp::Loc(ExprId::NULL));
-
-        let count = self.scope.vars.len() as u16;
-        self.append.ops.push(GraphOp::StackDealloc { count });
-    }
-}
+// impl<'a> Drop for CheckEnv<'a> {
+//     fn drop(&mut self) {
+//         self.append.ops.push(GraphOp::Loc(ExprId::NULL));
+//
+//         let count = self.scope.vars.len() as u16;
+//         self.append.ops.push(GraphOp::StackDealloc { count });
+//     }
+// }
 
 impl<'a> CheckEnv<'a> {
     fn check_block(&mut self, block: &Block) -> Result<Value, Error> {
@@ -121,30 +121,30 @@ impl<'a> CheckEnv<'a> {
             }
 
             Integer(value) => {
-                self.append.ops.push(GraphOp::Loc(id));
+                let target = self.register_id();
 
-                let op = self.register_id();
+                let kind = GraphOpKind::ConstantU64 { target, value };
+                let op = GraphOp::new(kind, Type::U64, id);
+                self.append.ops.push(op);
 
-                self.append.ops.push(GraphOp::ConstantU64 {
-                    output_id: op,
-                    value,
-                });
-
-                return Ok(Value::new(op, Type::U64));
+                return Ok(Value::new(target, Type::U64));
             }
 
             Let { symbol, value } => {
                 let result = self.check_expr(value)?;
 
-                let stack_id = self.declare(id, symbol, result.ty)?;
+                let target = self.declare(id, symbol, result.ty)?;
 
-                self.append.ops.push(GraphOp::Loc(id));
-                self.append.ops.push(GraphOp::StackVar { size: 8 });
-                self.append.ops.push(GraphOp::StoreStack64 {
-                    stack_id,
-                    offset: 0,
-                    input_id: result.op,
-                });
+                let kind = GraphOpKind::Declare(target);
+                let op = GraphOp::new(kind, Type::U64, value);
+                self.append.ops.push(op);
+
+                let kind = GraphOpKind::Mov {
+                    target,
+                    source: result.op,
+                };
+                let op = GraphOp::new(kind, Type::U64, id);
+                self.append.ops.push(op);
 
                 return Ok(NULL);
             }
@@ -157,16 +157,16 @@ impl<'a> CheckEnv<'a> {
                     }
                 };
 
-                let op = self.register_id();
+                let target = self.register_id();
 
-                self.append.ops.push(GraphOp::Loc(id));
-                self.append.ops.push(GraphOp::LoadStack64 {
-                    output_id: op,
-                    stack_id: var_info.id,
-                    offset: 0,
-                });
+                let kind = GraphOpKind::Mov {
+                    target,
+                    source: Operand::StackLocal { id: var_info.id },
+                };
+                let op = GraphOp::new(kind, var_info.ty, id);
+                self.append.ops.push(op);
 
-                return Ok(Value::new(op, var_info.ty));
+                return Ok(Value::new(target, var_info.ty));
             }
 
             If { cond, if_true } => {
@@ -180,7 +180,7 @@ impl<'a> CheckEnv<'a> {
                     expr: if_true,
                 };
 
-                let value = self.check_arms(var_id, end_block, &[if_true_arm])?;
+                // let value = self.check_arms(var_id, end_block, &[if_true_arm])?;
 
                 // assert_eq!(self.graph.ops.len(), 0);
                 // let ops = core::mem::replace(&mut self.graph.ops, Pod::new());
@@ -219,16 +219,17 @@ impl<'a> CheckEnv<'a> {
                     ));
                 }
 
-                let op = self.register_id();
+                let target = self.register_id();
 
-                self.append.ops.push(GraphOp::Loc(id));
-                self.append.ops.push(GraphOp::Add64 {
-                    out: op,
-                    op1: left_value.op,
-                    op2: right_value.op,
-                });
+                let kind = GraphOpKind::Add {
+                    target,
+                    left: left_value.op,
+                    right: right_value.op,
+                };
+                let op = GraphOp::new(kind, left_value.ty, id);
+                self.append.ops.push(op);
 
-                return Ok(Value::new(op, left_value.ty));
+                return Ok(Value::new(target, left_value.ty));
             }
 
             Block(block) => {
@@ -258,12 +259,13 @@ impl<'a> CheckEnv<'a> {
                 for arg in args {
                     let value = self.check_expr(arg)?;
 
-                    self.append.ops.push(GraphOp::Loc(id));
-                    self.append.ops.push(GraphOp::BuiltinPrint { op: value.op });
+                    let kind = GraphOpKind::Print { value: value.op };
+                    let op = GraphOp::new(kind, value.ty, arg);
+                    self.append.ops.push(op);
                 }
 
-                self.append.ops.push(GraphOp::Loc(id));
-                self.append.ops.push(GraphOp::BuiltinNewline);
+                let op = GraphOp::new(GraphOpKind::PrintNewline, Type::Null, id);
+                self.append.ops.push(op);
 
                 return Ok(NULL);
             }
@@ -370,7 +372,7 @@ impl<'a> CheckEnv<'a> {
         }
     }
 
-    fn declare(&mut self, id: ExprId, symbol: u32, ty: Type) -> Result<u16, Error> {
+    fn declare(&mut self, id: ExprId, symbol: u32, ty: Type) -> Result<Operand, Error> {
         use std::collections::hash_map::Entry;
 
         let e = match self.scope.vars.entry(symbol) {
@@ -385,21 +387,21 @@ impl<'a> CheckEnv<'a> {
 
         e.insert(VariableInfo { id, ty });
 
-        return Ok(id);
+        return Ok(Operand::StackLocal { id });
     }
 
-    fn reserve_var_id(&mut self) -> u16 {
+    fn reserve_var_id(&mut self) -> Operand {
         let id = self.ids.next_variable_id;
         self.ids.next_variable_id += 1;
 
-        return id;
+        return Operand::StackLocal { id };
     }
 
-    fn register_id(&mut self) -> u32 {
+    fn register_id(&mut self) -> Operand {
         let id = self.ids.next_op_id;
         self.ids.next_op_id += 1;
 
-        return id;
+        return Operand::Value { id };
     }
 }
 
@@ -438,7 +440,7 @@ impl<'a> ScopeEnv<'a> {
 
 struct IdTracker {
     next_variable_id: u16,
-    next_op_id: u32,
+    next_op_id: u16,
 }
 
 impl IdTracker {

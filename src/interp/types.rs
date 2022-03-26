@@ -790,6 +790,10 @@ impl AllocTracker {
         let start = self.bytes.len() as u32;
 
         let lossy_len = len.len();
+        if len.len() == 0 {
+            return r(start, start);
+        }
+
         let lossy_len = (lossy_len - 1) / 8 * 8 + 8;
         self.bytes.reserve(lossy_len as usize);
 
