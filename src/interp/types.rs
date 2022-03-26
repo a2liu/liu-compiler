@@ -427,6 +427,10 @@ pub enum Opcode {
         value: u16,
     },
 
+    Mov {
+        register_out: Out64Reg,
+        register_in: In64Reg,
+    },
     // opcode u8-register-output u8-register-pointer-input u8
     Get {
         register_out: OutReg,

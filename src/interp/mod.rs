@@ -31,7 +31,7 @@ impl<'a> Interpreter<'a> {
         loop {
             let opcode: Opcode = self.memory.read_op()?.into();
 
-            // println!("{:?}", opcode);
+            println!("{:?}", opcode);
 
             match opcode {
                 StackAlloc { len, save_address } => {
@@ -79,10 +79,19 @@ impl<'a> Interpreter<'a> {
                 } => {
                     let ptr = self.memory.stack_ptr(stack_id as u32, 0)?;
 
-                    println!("MakeFp {}", stack_id);
-
                     let id = register_out.expect_id()?;
                     self.memory.write_register(id, ptr)?;
+
+                    self.memory.advance_pc();
+                }
+
+                Mov {
+                    register_in,
+                    register_out,
+                } => {
+                    let out = register_out.expect_id()?;
+                    let value: u64 = self.memory.read_unsigned_reg(register_in)?.into();
+                    self.memory.write_register(out, value)?;
 
                     self.memory.advance_pc();
                 }
@@ -92,8 +101,6 @@ impl<'a> Interpreter<'a> {
                     let pointer: Ptr = self.memory.read_unsigned_reg(pointer)?.into();
 
                     let value: u64 = self.memory.read_unsigned_reg(value)?.into();
-
-                    println!("set {:?} {}", pointer, value);
 
                     match size_class {
                         0 => self.memory.write(pointer, value as u8)?,
@@ -125,8 +132,6 @@ impl<'a> Interpreter<'a> {
                             panic!("invalid size class: {}", out_size);
                         }
                     };
-
-                    println!("get {:?} {}", pointer, value);
 
                     let id = register_out.expect_id()?;
 
