@@ -21,13 +21,15 @@ pub enum Type {
 #[derive(Debug, Clone, Copy)]
 pub enum Operand {
     StackLocal { id: u16 },
-    Value { id: u16 },
+    RegisterValue { id: u16 },
     Null,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum GraphOpKind {
-    Declare(Operand),
+    DeclareStack {
+        size: u16,
+    },
     ValueDealloc {
         id: u16,
     },

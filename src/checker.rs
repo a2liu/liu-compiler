@@ -135,7 +135,7 @@ impl<'a> CheckEnv<'a> {
 
                 let target = self.declare(id, symbol, result.ty)?;
 
-                let kind = GraphOpKind::Declare(target);
+                let kind = GraphOpKind::DeclareStack { size: 8 };
                 let op = GraphOp::new(kind, Type::U64, value);
                 self.append.ops.push(op);
 
@@ -238,6 +238,11 @@ impl<'a> CheckEnv<'a> {
                 for expr in block.stmts {
                     child.check_expr(expr)?;
                 }
+
+                let count = child.scope.vars.len() as u16;
+                let kind = GraphOpKind::StackDealloc { count };
+                let op = GraphOp::new(kind, Type::Null, id);
+                self.append.ops.push(op);
 
                 return Ok(NULL);
             }
@@ -401,7 +406,7 @@ impl<'a> CheckEnv<'a> {
         let id = self.ids.next_op_id;
         self.ids.next_op_id += 1;
 
-        return Operand::Value { id };
+        return Operand::RegisterValue { id };
     }
 }
 
