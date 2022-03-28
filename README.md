@@ -11,6 +11,7 @@ good over time.
     Godbolt is usually much faster and more reliable.
 - Register allocation -
   http://www.cse.iitm.ac.in/~krishna/courses/2017/even-cs6013/linearscan.pdf
+- https://crates.io/crates/enum_dispatch
 
 # Ideas
 
@@ -21,7 +22,7 @@ accomplish much more complex stuffs. Default mode is to interpret the given
 file, so that this stuff is easier to do.
 
 Make compiler nice to work with as a library, so we can run experiments on what
-kinds of patterns are helpful and what arent.
+kinds of patterns are helpful and what aren't.
 
 Can also add this compiler as library to TCI lol, and have TCI target this as
 its backend.
@@ -92,6 +93,7 @@ its backend.
   code, but that the compile-time constraints are kept constant.
 - Try to keep base language to only things that affect runtime semantics,
   correctness typechecking checking can be done with metaprogramming
+- Something to enable something like this guy: https://github.com/google/zx
 
 ## Too Complex, use compiler API
 - Python ABI
@@ -111,6 +113,13 @@ its backend.
 `GraphOp` memory layout v1:
 -   Global allocator bump allocates graph
 -   Graph blocks are static, and just reference each other + functions directly
+-   Emulate stack for behavior of struct values
+-   What can structs do?
+    - Function arguments
+    - Function results
+    - Variable assignments/declarations
+    - Field accessors
+    - Field assignment
 
 `GraphOp` memory layout v2:
 -   Global garbage collector manages basic block lifetimes/allocations
