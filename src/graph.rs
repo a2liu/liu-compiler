@@ -18,6 +18,7 @@ pub enum Type {
     Procedure,
 }
 
+// register sized operands
 #[derive(Debug, Clone, Copy)]
 pub enum Operand {
     StackLocal { id: u16 },

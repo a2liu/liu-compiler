@@ -54,6 +54,7 @@ its backend.
 - Some kind of "throw error" thing, but not using stack unwinding
 - Nullable checks: `a ?? b`, `a?.b`, `a?(`, `a?[`, etc.
 - Some kind of "pass up this if it throws" thing, i.e. `could_error()!`
+- Some kind of "hard crash if this throws" thing, e.g. `could_error() ?? crash`
 - Default hard-crash for error types?
 - Memory layouts that don't encode types themselves, but get typechecked, e.g.
 
@@ -75,7 +76,6 @@ its backend.
 - Closures
 - Complex enums
 - Non-nullable types
-- Overloading
 - Operator overloading
 - Interfaces/traits/etc.
 - Anonymous structs
@@ -94,6 +94,10 @@ its backend.
 - Try to keep base language to only things that affect runtime semantics,
   correctness typechecking checking can be done with metaprogramming
 - Something to enable something like this guy: https://github.com/google/zx
+- Global initialization stuffs or smthn, because you should be able to initialize
+  some data once, eagerly, at startup, and not pay a weird nonsense synchronization
+  cost for the rest of the program's runtime.
+  - maybe this can be done using compiler API?
 
 ## Too Complex, use compiler API
 - Python ABI
@@ -105,6 +109,7 @@ its backend.
 - Inheritance
 - Garbage collection
 - RAII
+- Overloading
 
 ## Intended Architecture
 ### NOTE: NONE OF THIS IS IMPLEMENTED
@@ -115,11 +120,15 @@ its backend.
 -   Graph blocks are static, and just reference each other + functions directly
 -   Emulate stack for behavior of struct values
 -   What can structs do?
-    - Function arguments
-    - Function results
-    - Variable assignments/declarations
-    - Field accessors
-    - Field assignment
+    - Function arguments -> struct mov
+    - Function results -> function outputs to stack var
+    - Variable assignments/declarations -> struct mov
+    - Field accessors to control flow -> struct mov
+    - Field assignment -> struct mov
+    - `check_expr_inner` might return a readable pointer value, which then gets
+      resolved by `check_expr` into a stack write or drop or whatever
+    - checker's `Value` needs to encode Operand but also other things, like
+      readable struct location data
 
 `GraphOp` memory layout v2:
 -   Global garbage collector manages basic block lifetimes/allocations
