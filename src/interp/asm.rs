@@ -16,95 +16,98 @@ impl Assembler {
     }
 
     pub fn assemble(mut self, graph: &Graph, entry_block: u32) -> AllocTracker {
-        use GraphOpKind::*;
+        /*
+            use GraphOpKind::*;
 
-        let block = graph.blocks[entry_block];
-        let ops = &graph.ops[block.ops];
+            let block = graph.blocks[entry_block];
+            let ops = &graph.ops[block.ops];
 
-        for &op in ops {
-            self.current_expr = op.expr;
+            for &op in ops {
+                self.current_expr = op.expr;
 
-            match op.kind {
-                DeclareStack { size } => {
-                    let len = AllocLen::new(size as u32);
-                    self.push(Opcode::StackAlloc {
-                        len,
-                        save_address: Out64Reg::NULL,
-                    });
-                }
+                match op.kind {
+                    DeclareStack { size } => {
+                        let len = AllocLen::new(size as u32);
+                        self.push(Opcode::StackAlloc {
+                            len,
+                            save_address: Out64Reg::NULL,
+                        });
+                    }
 
-                StackDealloc { count } => {
-                    self.push(Opcode::StackDealloc { count });
-                }
+                    StackDealloc { count } => {
+                        self.push(Opcode::StackDealloc { count });
+                    }
 
-                ConstantU64 { target, value } => {
-                    let register_out = Out64Reg::new(30);
+                    ConstantU64 { target, value } => {
+                        let register_out = Out64Reg::new(30);
 
-                    self.push(Opcode::Make64 {
-                        register_out,
-                        stack_slot: StackSlot::MEH,
-                    });
+                        self.push(Opcode::Make64 {
+                            register_out,
+                            stack_slot: StackSlot::MEH,
+                        });
 
-                    self.push(value as u32);
-                    self.push((value >> 32) as u32);
+                        self.push(value as u32);
+                        self.push((value >> 32) as u32);
 
-                    self.write_to_operand(target, RegSize64, 30);
-                }
+                        self.write_to_operand(target, RegSize64, 30);
+                    }
 
-                Mov { target, source } => {
-                    let op = self.operand(source, 30);
+                    Mov { target, source } => {
+                        let op = self.operand(source, 30);
 
-                    self.write_to_operand(target, RegSize64, op);
-                }
+                        self.write_to_operand(target, RegSize64, op);
+                    }
 
-                Add {
-                    target,
-                    left,
-                    right,
-                } => {
-                    let op1 = self.operand(left, 29);
-                    let op2 = self.operand(right, 30);
+                    Add {
+                        target,
+                        left,
+                        right,
+                    } => {
+                        let op1 = self.operand(left, 29);
+                        let op2 = self.operand(right, 30);
 
-                    self.push(Opcode::Add {
-                        register_out: OutReg::new(RegUnsigned, RegSize64, 30),
-                        left: InReg::new(RegSize64, op1 as u8),
-                        right: InReg::new(RegSize64, op2 as u8),
-                    });
+                        self.push(Opcode::Add {
+                            register_out: OutReg::new(RegUnsigned, RegSize64, 30),
+                            left: InReg::new(RegSize64, op1 as u8),
+                            right: InReg::new(RegSize64, op2 as u8),
+                        });
 
-                    self.write_to_operand(target, RegSize64, 30);
-                }
+                        self.write_to_operand(target, RegSize64, 30);
+                    }
 
-                Print { value } => {
-                    let op = self.operand(value, 30);
+                    Print { value } => {
+                        let op = self.operand(value, 30);
 
-                    self.push(Opcode::Ecall {
-                        kind: EcallKind::Print,
-                        input_1: In64Reg::new(op),
-                        input_2: In64Reg::NULL,
-                    });
-                }
+                        self.push(Opcode::Ecall {
+                            kind: EcallKind::Print,
+                            input_1: In64Reg::new(op),
+                            input_2: In64Reg::NULL,
+                        });
+                    }
 
-                PrintNewline => {
-                    self.push(Opcode::Ecall {
-                        kind: EcallKind::PrintNewline,
-                        input_1: In64Reg::NULL,
-                        input_2: In64Reg::NULL,
-                    });
-                }
+                    PrintNewline => {
+                        self.push(Opcode::Ecall {
+                            kind: EcallKind::PrintNewline,
+                            input_1: In64Reg::NULL,
+                            input_2: In64Reg::NULL,
+                        });
+                    }
 
-                ExitSuccess => {
-                    self.push(Opcode::Ecall {
-                        kind: EcallKind::ExitSuccess,
-                        input_1: In64Reg::NULL,
-                        input_2: In64Reg::NULL,
-                    });
-                }
+                    ExitSuccess => {
+                        self.push(Opcode::Ecall {
+                            kind: EcallKind::ExitSuccess,
+                            input_1: In64Reg::NULL,
+                            input_2: In64Reg::NULL,
+                        });
+                    }
 
-                _ => {
-                    unimplemented!("{:?}", op);
+                    _ => {
+                        unimplemented!("{:?}", op);
+                    }
                 }
             }
-        }
+
+        */
 
         let mut binary = AllocTracker::new();
         binary.alloc_exe(self.exe_bytes, Some(self.loc_bytes));

@@ -2,6 +2,10 @@ use crate::*;
 use core::cell::Cell;
 use std::collections::hash_map::HashMap;
 
+// Bruh wtf do i do
+//
+// Block stack-ly resets register numbers after every statement
+
 #[derive(Debug, Clone, Copy)]
 pub struct Value {
     pub op: Operand,
@@ -148,15 +152,22 @@ impl<'a> CheckEnv<'a> {
 
             Let { symbol, value } => {
                 // TODO fix in a sec
-                let result = self.check_expr(ValueSlot::SaveSomewhere, value)?;
-                let target = self.declare(id, symbol, result.ty)?;
+                let var_id = self.reserve_var_id();
+                let slot = ValueSlot::StackLocation { id: var_id };
+
+                let result = self.check_expr(slot, value)?;
+                let info = VariableInfo {
+                    id: var_id,
+                    ty: result.ty,
+                };
+                self.declare(id, symbol, info)?;
 
                 let kind = GraphOpKind::DeclareStack { size: 8 };
                 let op = GraphOp::new(kind, Type::U64, value);
                 self.append.ops.push(op);
 
                 let kind = GraphOpKind::Mov {
-                    target,
+                    target: Operand::Null,
                     source: result.op,
                 };
                 let op = GraphOp::new(kind, Type::U64, id);
@@ -188,13 +199,13 @@ impl<'a> CheckEnv<'a> {
             If { cond, if_true } => {
                 let end_block = self.graph.get_block_id();
 
-                let var_id = self.reserve_var_id();
+                // let var_id = self.reserve_var_id();
 
-                let if_true_block_id = self.graph.get_block_id();
-                let if_true_arm = Arm {
-                    block_id: if_true_block_id,
-                    expr: if_true,
-                };
+                // let if_true_block_id = self.graph.get_block_id();
+                // let if_true_arm = Arm {
+                //     block_id: if_true_block_id,
+                //     expr: if_true,
+                // };
 
                 // let value = self.check_arms(var_id, end_block, &[if_true_arm])?;
 
@@ -393,7 +404,7 @@ impl<'a> CheckEnv<'a> {
         }
     }
 
-    fn declare(&mut self, id: ExprId, symbol: u32, ty: Type) -> Result<Operand, Error> {
+    fn declare(&mut self, id: ExprId, symbol: u32, info: VariableInfo) -> Result<(), Error> {
         use std::collections::hash_map::Entry;
 
         let e = match self.scope.vars.entry(symbol) {
@@ -403,19 +414,16 @@ impl<'a> CheckEnv<'a> {
             }
         };
 
-        let id = self.ids.next_variable_id;
-        self.ids.next_variable_id += 1;
+        e.insert(info);
 
-        e.insert(VariableInfo { id, ty });
-
-        return Ok(Operand::StackLocal { id });
+        return Ok(());
     }
 
-    fn reserve_var_id(&mut self) -> Operand {
+    fn reserve_var_id(&mut self) -> u16 {
         let id = self.ids.next_variable_id;
         self.ids.next_variable_id += 1;
 
-        return Operand::StackLocal { id };
+        return id;
     }
 
     fn register_id(&mut self) -> Operand {
