@@ -29,7 +29,8 @@ pub enum ValueLocation {
 
     StackSlot { id: u16 },
     Primitive { id: u16 },
-    Null,
+    Written,
+    NoValue,
 }
 
 const NULL: Value = Value {
@@ -63,7 +64,7 @@ pub fn check_ast(ast: &Ast) -> Result<(Graph, u32), Error> {
     };
 
     for expr in ast.block.stmts {
-        env.check_expr(None, expr)?;
+        env.check_expr(ValueSlot::Delete, expr)?;
     }
 
     core::mem::drop(env);
@@ -95,7 +96,7 @@ struct CheckEnv<'a> {
 }
 
 impl<'a> CheckEnv<'a> {
-    fn check_block(&mut self, slot: Option<ValueSlot>, block: &Block) -> Result<Value, Error> {
+    fn check_block(&mut self, slot: ValueSlot, block: &Block) -> Result<Value, Error> {
         use ExprKind::*;
 
         for expr in block.stmts {
@@ -108,19 +109,19 @@ impl<'a> CheckEnv<'a> {
         }
 
         for expr in block.stmts {
-            self.check_expr(None, expr)?;
+            self.check_expr(ValueSlot::Delete, expr)?;
         }
 
         return Ok(NULL);
     }
 
-    fn check_expr(&mut self, slot: Option<ValueSlot>, id: ExprId) -> Result<Value, Error> {
+    fn check_expr(&mut self, slot: ValueSlot, id: ExprId) -> Result<Value, Error> {
         let value = self.check_expr_inner(slot, id)?;
 
         return Ok(value);
     }
 
-    fn check_expr_inner(&mut self, slot: Option<ValueSlot>, id: ExprId) -> Result<Value, Error> {
+    fn check_expr_inner(&mut self, slot: ValueSlot, id: ExprId) -> Result<Value, Error> {
         use ExprKind::*;
 
         let expr = &*id;
@@ -130,7 +131,7 @@ impl<'a> CheckEnv<'a> {
                 let mut ids = IdTracker::new();
                 let mut proc_child = self.chain_proc(&mut ids);
 
-                let result = proc_child.check_expr(None, p.code)?;
+                let result = proc_child.check_expr(ValueSlot::Delete, p.code)?;
 
                 return Ok(NULL);
             }
@@ -146,8 +147,8 @@ impl<'a> CheckEnv<'a> {
             }
 
             Let { symbol, value } => {
-                let result = self.check_expr(None, value)?;
-
+                // TODO fix in a sec
+                let result = self.check_expr(ValueSlot::SaveSomewhere, value)?;
                 let target = self.declare(id, symbol, result.ty)?;
 
                 let kind = GraphOpKind::DeclareStack { size: 8 };
@@ -224,8 +225,8 @@ impl<'a> CheckEnv<'a> {
             }
 
             BinaryOp { kind, left, right } => {
-                let left_value = self.check_expr(None, left)?;
-                let right_value = self.check_expr(None, right)?;
+                let left_value = self.check_expr(ValueSlot::SaveSomewhere, left)?;
+                let right_value = self.check_expr(ValueSlot::SaveSomewhere, right)?;
 
                 if left_value.ty != right_value.ty {
                     return Err(Error::new(
@@ -251,7 +252,7 @@ impl<'a> CheckEnv<'a> {
                 let mut child = self.chain_local();
 
                 for expr in block.stmts {
-                    child.check_expr(None, expr)?;
+                    child.check_expr(ValueSlot::Delete, expr)?;
                 }
 
                 let count = child.scope.vars.len() as u16;
@@ -277,7 +278,7 @@ impl<'a> CheckEnv<'a> {
                 }
 
                 for arg in args {
-                    let value = self.check_expr(None, arg)?;
+                    let value = self.check_expr(ValueSlot::SaveSomewhere, arg)?;
 
                     let kind = GraphOpKind::Print { value: value.op };
                     let op = GraphOp::new(kind, value.ty, arg);
@@ -309,7 +310,7 @@ impl<'a> CheckEnv<'a> {
             };
 
             let mut branch = self.chain_branch(&mut append);
-            branch.check_expr(None, arm.expr)?;
+            branch.check_expr(ValueSlot::SaveSomewhere, arm.expr)?;
         }
 
         return Ok(NULL);
