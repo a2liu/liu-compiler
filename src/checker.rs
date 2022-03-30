@@ -16,6 +16,14 @@ impl Value {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ValueSlot {
+    StackLocation { id: u16 },
+    ValuePointer { id: u16 },
+    SaveSomewhere,
+    Delete,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ValueLocation {
     StackLocation { id: u16, offset: u32 },
     ValuePointer { id: u16 },
 
